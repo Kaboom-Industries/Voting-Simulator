@@ -1,0 +1,869 @@
+u<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Academy Voting Lab V3: Monte Carlo</title>
+    <style>
+        :root {
+            --gold: #c5a059;
+            --dark: #1a1a1a;
+            --light: #f4f4f4;
+            --accent: #2c3e50;
+            --danger: #e74c3c;
+            --rrv-color: #27ae60; /* Green for Consensus */
+            --stv-color: #2980b9; /* Blue for Passion */
+        }
+        body { font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background-color: var(--light); color: var(--dark); margin: 0; display: flex; height: 100vh; overflow: hidden; }
+        
+        /* Sidebar */
+        .sidebar { width: 340px; background: #fff; border-right: 1px solid #ddd; display: flex; flex-direction: column; flex-shrink: 0; z-index: 2; box-shadow: 2px 0 10px rgba(0,0,0,0.05); }
+        .sidebar-header { padding: 20px; background: var(--dark); color: white; }
+        .sidebar-header h1 { margin: 0; font-size: 1.2rem; color: var(--gold); }
+        .sidebar-scroll { padding: 20px; overflow-y: auto; flex-grow: 1; }
+        
+        /* Main Content */
+        .main { flex-grow: 1; display: flex; flex-direction: column; overflow: hidden; background: #eef2f5; }
+        .tabs { display: flex; background: #fff; padding: 0 20px; border-bottom: 1px solid #ddd; }
+        .tab { padding: 15px 20px; cursor: pointer; color: #666; font-weight: 500; border-bottom: 3px solid transparent; transition: all 0.2s; }
+        .tab:hover { background: #f9f9f9; }
+        .tab.active { color: var(--accent); border-bottom-color: var(--gold); background: #f0f7ff; }
+        
+        .tab-content { display: none; padding: 20px; overflow-y: auto; height: 100%; box-sizing: border-box; }
+        .tab-content.active { display: block; }
+
+        /* Controls */
+        .control-group { margin-bottom: 20px; padding-bottom: 15px; border-bottom: 1px solid #eee; }
+        .control-group label { display: block; font-weight: 700; margin-bottom: 8px; font-size: 0.9rem; color: var(--accent); }
+        .slider-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 5px; }
+        .slider-val { font-family: monospace; font-weight: bold; color: var(--accent); width: 30px; text-align: right; }
+        input[type=range] { flex-grow: 1; margin: 0 10px; }
+        
+        button.run-btn { background: var(--accent); color: white; border: none; padding: 12px; width: 100%; font-size: 1rem; font-weight: bold; border-radius: 4px; cursor: pointer; transition: background 0.2s; }
+        button.run-btn:hover { background: #34495e; }
+        button.monte-btn { background: var(--gold); color: white; margin-top: 10px; }
+        button.monte-btn:hover { background: #b08d4b; }
+
+        /* Matrix Editor */
+        .matrix-container { overflow-x: auto; background: white; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); padding: 10px; }
+        table.matrix { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+        table.matrix th { text-align: left; padding: 10px; background: #f8f9fa; border-bottom: 2px solid #ddd; position: sticky; top: 0; z-index: 10; min-width: 150px; }
+        table.matrix td { border-bottom: 1px solid #eee; padding: 5px; }
+        table.matrix input { width: 40px; padding: 4px; border: 1px solid #ddd; border-radius: 3px; text-align: center; }
+        table.matrix input:focus { border-color: var(--gold); outline: none; background: #fffbe6; }
+        
+        /* Heatmap coloring classes */
+        .score-10 { background-color: #27ae60; color: white; }
+        .score-8-9 { background-color: #7dcea0; }
+        .score-5-7 { background-color: #f9e79f; }
+        .score-1-4 { background-color: #f1948a; }
+        .score-0 { background-color: #e5e8e8; color: #aaa; }
+
+        /* Results & Cards */
+        .results-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 30px; }
+        .card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
+        .card h2 { margin-top: 0; font-size: 1.1rem; border-bottom: 2px solid var(--gold); padding-bottom: 8px; color: var(--accent); }
+        
+        table.results { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+        table.results th { text-align: left; color: #888; padding: 8px; border-bottom: 1px solid #eee; }
+        table.results td { padding: 8px; border-bottom: 1px solid #eee; }
+        tr.bubble { background-color: #fff9c4; font-weight: bold; }
+        tr.cut { opacity: 0.6; }
+
+        /* Monte Carlo Table */
+        .bar-container { width: 100px; height: 10px; background: #eee; border-radius: 5px; overflow: hidden; display: inline-block; vertical-align: middle; margin-right: 5px; }
+        .bar-fill { height: 100%; }
+        .delta-bar { height: 6px; border-radius: 3px; display: inline-block; }
+        
+        .tag-consensus { font-size: 0.7rem; background: #e8f5e9; color: #2e7d32; padding: 2px 6px; border-radius: 4px; border: 1px solid #c8e6c9; }
+        .tag-passion { font-size: 0.7rem; background: #e3f2fd; color: #1565c0; padding: 2px 6px; border-radius: 4px; border: 1px solid #bbdefb; }
+
+        /* Loading Overlay */
+        #loading { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(255,255,255,0.8); z-index: 1000; justify-content: center; align-items: center; flex-direction: column; }
+        .spinner { width: 40px; height: 40px; border: 4px solid #f3f3f3; border-top: 4px solid var(--gold); border-radius: 50%; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+
+<div id="loading">
+    <div class="spinner"></div>
+    <div style="margin-top:15px; font-weight:bold; color:#555;">Simulating 1,000 Elections...</div>
+</div>
+
+<div class="sidebar">
+    <div class="sidebar-header">
+        <h1>🗳️ Academy Voting Lab</h1>
+        <div style="font-size: 0.8rem; opacity: 0.8;">V3.0: Monte Carlo Edition</div>
+    </div>
+    <div class="sidebar-scroll">
+        <div class="control-group">
+            <label>Voter Composition (Total: <span id="total-voters">35</span>)</label>
+            <div id="sliders-container"></div>
+        </div>
+
+        <div class="control-group">
+            <label>Human Nature (Noise)</label>
+            <div class="slider-row">
+                <span style="font-size:0.8rem">Robots</span>
+                <input type="range" id="variance-slider" min="0" max="5" step="0.5" value="1.5" oninput="runSingleSimulation()">
+                <span style="font-size:0.8rem">Chaos</span>
+            </div>
+            <div style="font-size:0.75rem; color:#666; margin-top:5px;">
+                Controls how much individual voters deviate from their group's Master Preference.
+            </div>
+        </div>
+        
+        <div class="control-group">
+            <label>Current Seed</label>
+            <input type="number" id="seed-input" value="1234" style="width:100%; padding:5px;" oninput="runSingleSimulation()">
+        </div>
+
+	<div class="control-group" style="border-bottom:none; margin-bottom:10px;">
+            <div style="display:flex; gap:10px;">
+                <button onclick="saveConfig()" style="flex:1; background:#fff; border:1px solid #ccc; color:#333; padding:8px; border-radius:4px; cursor:pointer; font-weight:bold;">💾 Save</button>
+                <button onclick="document.getElementById('load-file').click()" style="flex:1; background:#fff; border:1px solid #ccc; color:#333; padding:8px; border-radius:4px; cursor:pointer; font-weight:bold;">📂 Load</button>
+            </div>
+            <input type="file" id="load-file" style="display:none" onchange="loadConfig(this)">
+        </div>
+
+        <button class="run-btn" onclick="runSingleSimulation()">RUN SINGLE SIM</button>
+        <button class="run-btn monte-btn" onclick="runMonteCarlo()">RUN 1,000x SIMS</button>
+    </div>
+</div>
+
+<div class="main">
+    <div class="tabs">
+        <div class="tab active" onclick="switchTab('tab-matrix')">1. Matrix Editor</div>
+        <div class="tab" onclick="switchTab('tab-inspector')">2. Voter Inspector</div>
+        <div class="tab" onclick="switchTab('tab-results')">3. Single Result</div>
+        <div class="tab" onclick="switchTab('tab-logs')">4. Single Calc Logs</div>
+        <div class="tab" onclick="switchTab('tab-monte')">5. Monte Carlo Analysis</div>
+    </div>
+
+
+    <div id="tab-matrix" class="tab-content active">
+        <div style="margin-bottom: 15px;">
+            <h2 style="margin:0;">Archetype Master Preferences</h2>
+            <p style="margin:5px 0 0 0; color:#666; font-size:0.9rem;">
+                Values are 0-10. 0 = Abstain. 10 = Best in Class.
+            </p>
+        </div>
+        <div class="matrix-container">
+            <table class="matrix" id="pref-matrix">
+                <thead>
+                    <tr>
+                        <th style="background:#fff; z-index:20; left:0; position:sticky;">Film Title</th>
+                        </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+        <div style="margin-top:20px; text-align:right;">
+            <button onclick="resetMatrix()" style="padding:10px; background:#ddd; border:none; cursor:pointer; border-radius:4px;">Reset to Defaults</button>
+        </div>
+    </div>
+
+    <div id="tab-monte" class="tab-content">
+        <div class="card">
+            <h2>Monte Carlo Probability Analysis (1,000 Iterations)</h2>
+            <p style="color:#666; margin-bottom:20px;">
+                This table runs the election 1,000 times with random noise and different tie-breaks to find the true statistical probability of nomination.
+            </p>
+            <table class="results" id="monte-table">
+                <thead>
+                    <tr>
+                        <th width="30%">Film</th>
+                        <th width="25%">Range (RRV) Chance</th>
+                        <th width="25%">Preferential (STV) Chance</th>
+                        <th width="20%">System Bias</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr><td colspan="4" style="text-align:center; padding:30px;">Click "RUN 1,000x SIMS" in sidebar to generate data.</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <div class="card" style="margin-top:20px;">
+            <h3>Interpretation Guide</h3>
+            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:20px;">
+                <div>
+                    <span class="tag-consensus">RRV Favored (Consensus)</span>
+                    <p style="font-size:0.9rem; color:#555;">
+                        Films that perform better in Range Voting usually have <strong>Broad Support</strong> (many 6s, 7s, 8s) but lack "Number One" votes. They are the "safe" choices that everyone agrees are good.
+                    </p>
+                </div>
+                <div>
+                    <span class="tag-passion">STV Favored (Passion)</span>
+                    <p style="font-size:0.9rem; color:#555;">
+                        Films that perform better in Preferential Voting have <strong>Deep Passion</strong> (high number of 10s/Rank #1s) but might be hated by others. STV rewards intensity over breadth.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="tab-results" class="tab-content">
+        <div class="results-grid">
+            <div class="card">
+                <h2>Range Reweighted (RRV)</h2>
+                <table class="results" id="rrv-table">
+                    <thead><tr><th>#</th><th>Film</th><th>Score</th></tr></thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+            <div class="card">
+                <h2>Preferential (STV)</h2>
+                <table class="results" id="stv-table">
+                    <thead><tr><th>#</th><th>Film</th><th>Round</th></tr></thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </div>
+        
+        <div class="card">
+            <h2>🔮 Bubble Watch Analysis (Single Sim)</h2>
+            <div style="display:flex; justify-content:space-between; margin-bottom:20px;">
+                <div style="width:48%; background:#fcfcfc; padding:15px; border:1px solid #eee;">
+                    <strong>9th Place (Safe)</strong>
+                    <div id="bubble-9" style="font-size:1.4rem; color:var(--accent); font-weight:bold; margin-top:5px;">-</div>
+                </div>
+                <div style="width:48%; background:#fff3e0; padding:15px; border:1px solid #ffd591;">
+                    <strong>10th Place (The Danger Zone)</strong>
+                    <div id="bubble-10" style="font-size:1.4rem; color:#d35400; font-weight:bold; margin-top:5px;">-</div>
+                    <div id="bubble-margin" style="font-size:0.9rem; margin-top:5px;">Margin over cut: -</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card" style="margin-top:20px;">
+            <h3>System Discrepancies (Single Sim)</h3>
+            <div id="comp-output"></div>
+        </div>
+    </div>
+
+    <div id="tab-inspector" class="tab-content">
+        <h2>Individual Voter Inspector</h2>
+        <div id="inspector-container"></div>
+    </div>
+
+    <div id="tab-logs" class="tab-content">
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:20px; height:100%;">
+            <div style="display:flex; flex-direction:column;">
+                <h3>RRV Log</h3>
+                <textarea id="log-rrv" style="flex-grow:1; width:100%; font-family:monospace; padding:10px; border:1px solid #ddd; white-space: pre; overflow-x: auto;"></textarea>
+            </div>
+            <div style="display:flex; flex-direction:column;">
+                <h3>STV Log</h3>
+                <textarea id="log-stv" style="flex-grow:1; width:100%; font-family:monospace; padding:10px; border:1px solid #ddd; white-space: pre; overflow-x: auto;"></textarea>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// --- DATA DEFINITIONS ---
+const FILMS = [
+    "AVATAR: FIRE AND ASH", "CAPTAIN AMERICA: BRAVE NEW WORLD", "F1", "FRANKENSTEIN",
+    "HOW TO TRAIN YOUR DRAGON", "JURASSIC WORLD REBIRTH", "LILO & STITCH", "MICKEY 17",
+    "A MINECRAFT MOVIE", "MISSION: IMPOSSIBLE - THE FINAL RECKONING", "PREDATOR: BADLANDS",
+    "SINNERS", "SUPERMAN", "THE ELECTRIC STATE", "THE FANTASTIC FOUR: FIRST STEPS",
+    "THE LOST BUS", "THE RUNNING MAN", "THUNDERBOLTS*", "TRON: ARES", "WICKED: FOR GOOD"
+];
+
+const GROUPS = [
+    { id: "vfx", name: "VFX / Spectacle", count: 4 },
+    { id: "comp", name: "Compositing", count: 3 },
+    { id: "anim", name: "Animation", count: 4 },
+    { id: "prac", name: "Practical / Stunt", count: 5 },
+    { id: "sim", name: "Creature / Sim", count: 4 },
+    { id: "gen", name: "Generalist", count: 15 }
+];
+
+const DEFAULT_MATRIX = {
+    //                                          [vfx, comp, anim, prac, sim, gen]
+    "AVATAR: FIRE AND ASH":                     [10, 8, 7, 5, 9, 9],
+    "CAPTAIN AMERICA: BRAVE NEW WORLD":         [7, 6, 3, 7, 4, 2],
+    "F1":                                       [6, 9, 2, 10, 5, 8],
+    "FRANKENSTEIN":                             [6, 7, 5, 6, 10, 6],
+    "HOW TO TRAIN YOUR DRAGON":                 [5, 4, 10, 3, 6, 5],
+    "JURASSIC WORLD REBIRTH":                   [7, 6, 6, 5, 9, 8],
+    "LILO & STITCH":                            [4, 3, 9, 2, 5, 4],
+    "MICKEY 17":                                [7, 8, 6, 6, 9, 7], 
+    "A MINECRAFT MOVIE":                        [5, 4, 8, 1, 5, 1],
+    "MISSION: IMPOSSIBLE - THE FINAL RECKONING":[7, 8, 3, 10, 4, 4],
+    "PREDATOR: BADLANDS":                       [5, 6, 2, 9, 5, 5],
+    "SINNERS":                                  [4, 9, 2, 8, 4, 7], 
+    "SUPERMAN":                                 [9, 7, 5, 6, 5, 4],
+    "THE ELECTRIC STATE":                       [9, 6, 7, 4, 9, 9],
+    "THE FANTASTIC FOUR: FIRST STEPS":          [9, 6, 5, 5, 5, 5],
+    "THE LOST BUS":                             [3, 9, 2, 8, 3, 8],
+    "THE RUNNING MAN":                          [5, 8, 3, 8, 4, 3], 
+    "THUNDERBOLTS*":                            [6, 5, 3, 7, 4, 2],
+    "TRON: ARES":                               [10, 7, 5, 4, 6, 7],
+    "WICKED: FOR GOOD":                         [8, 7, 10, 3, 5, 10]
+};
+
+let currentMatrix = JSON.parse(JSON.stringify(DEFAULT_MATRIX));
+
+// --- SEEDED RANDOM (LCG) ---
+let _seed = 1234;
+// We allow setting seed manually, but also generate temp seeds for monte carlo
+function seed(s) { _seed = s % 2147483647; if (_seed <= 0) _seed += 2147483646; }
+function random() { _seed = _seed * 16807 % 2147483647; return (_seed - 1) / 2147483646; }
+function randomNormal(mean, stdDev) {
+    let u = 0, v = 0;
+    while(u === 0) u = random(); 
+    while(v === 0) v = random();
+    let num = Math.sqrt( -2.0 * Math.log( u ) ) * Math.cos( 2.0 * Math.PI * v );
+    return num * stdDev + mean;
+}
+
+// --- UI HELPERS ---
+function init() {
+    renderSliders();
+    renderMatrix();
+    runSingleSimulation();
+}
+
+function renderSliders() {
+    const c = document.getElementById('sliders-container');
+    c.innerHTML = '';
+    GROUPS.forEach((g, i) => {
+        let div = document.createElement('div');
+        div.innerHTML = `
+            <div class="slider-row" style="margin-top:8px;">
+                <span style="font-size:0.8rem; font-weight:bold; width:120px;">${g.name}</span>
+                <input type="range" id="sl-${i}" min="0" max="35" value="${g.count}" oninput="updateCounts(${i})">
+                <span id="sl-val-${i}" class="slider-val">${g.count}</span>
+            </div>`;
+        c.appendChild(div);
+    });
+}
+
+function updateCounts(idx) {
+    let val = document.getElementById(`sl-${idx}`).value;
+    document.getElementById(`sl-val-${idx}`).innerText = val;
+    GROUPS[idx].count = parseInt(val);
+    let total = GROUPS.reduce((a,b) => a + b.count, 0);
+    let totEl = document.getElementById('total-voters');
+    totEl.innerText = total;
+    totEl.style.color = total === 35 ? "green" : "#e74c3c";
+    runSingleSimulation();
+}
+
+function renderMatrix() {
+    const table = document.getElementById('pref-matrix');
+    const thead = table.querySelector('thead tr');
+    const tbody = table.querySelector('tbody');
+    while(thead.children.length > 1) thead.removeChild(thead.lastChild);
+    tbody.innerHTML = '';
+    GROUPS.forEach(g => {
+        let th = document.createElement('th');
+        th.innerText = g.name;
+        th.style.textAlign = 'center';
+        thead.appendChild(th);
+    });
+    FILMS.forEach(film => {
+        let tr = document.createElement('tr');
+        let tdTitle = document.createElement('td');
+        tdTitle.innerText = film;
+        tdTitle.style.fontWeight = 'bold';
+        tdTitle.style.position = 'sticky';
+        tdTitle.style.left = '0';
+        tdTitle.style.background = '#fff';
+        tr.appendChild(tdTitle);
+        GROUPS.forEach((g, gIdx) => {
+            let td = document.createElement('td');
+            td.style.textAlign = 'center';
+            let val = currentMatrix[film][gIdx];
+            let input = document.createElement('input');
+            input.type = 'number';
+            input.min = 0; input.max = 10;
+            input.value = val;
+            input.onchange = (e) => { currentMatrix[film][gIdx] = parseInt(e.target.value); };
+            td.appendChild(input);
+            tr.appendChild(td);
+        });
+        tbody.appendChild(tr);
+    });
+}
+
+function resetMatrix() {
+    currentMatrix = JSON.parse(JSON.stringify(DEFAULT_MATRIX));
+    renderMatrix();
+}
+
+function switchTab(id) {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+    document.querySelector(`.tab[onclick="switchTab('${id}')"]`).classList.add('active');
+    document.getElementById(id).classList.add('active');
+}
+
+// --- GENERATION ENGINE ---
+
+function generateVotes(simSeed) {
+    seed(simSeed);
+    let variance = parseFloat(document.getElementById('variance-slider').value);
+    let votes = [];
+    GROUPS.forEach((g, gIdx) => {
+        if(g.count === 0) return;
+        for(let i=0; i<g.count; i++) {
+            let voter = { id: `${g.id}_${i+1}`, groupName: g.name, scores: {} };
+            FILMS.forEach(film => {
+                let masterScore = currentMatrix[film][gIdx];
+                if(masterScore === 0) {
+                     voter.scores[film] = (random() < 0.05) ? Math.floor(random()*3) : 0;
+                } else {
+                    let noise = randomNormal(0, variance);
+                    let finalScore = Math.round(masterScore + noise);
+                    voter.scores[film] = Math.max(0, Math.min(10, finalScore));
+                }
+            });
+            votes.push(voter);
+        }
+    });
+    return votes;
+}
+
+// --- ALGORITHMS ---
+
+function runRRV(votes, doLog = false) {
+    let winners = [];
+    let log = [];
+    let weights = votes.map(() => 1.0);
+    let candidates = [...FILMS];
+    const MAX_SEATS = 10;
+    
+    for(let round=1; round<=MAX_SEATS; round++) {
+        let scores = {};
+        candidates.forEach(f => scores[f] = 0);
+        
+        candidates.forEach(film => {
+            votes.forEach((v, i) => { scores[film] += v.scores[film] * weights[i]; });
+        });
+        
+        // Sort by Score
+        let sorted = Object.entries(scores).sort((a,b) => b[1] - a[1]);
+        let winner = sorted[0][0];
+        let score = sorted[0][1];
+        let runnerUp = sorted[1] ? sorted[1][1] : 0;
+        let margin = score - runnerUp;
+
+        winners.push({ rank: round, film: winner, score: score, margin: margin });
+        
+        if(doLog) {
+            log.push(`ROUND ${round}: ${winner} (Score: ${score.toFixed(2)}). Margin: ${margin.toFixed(2)} over ${sorted[1] ? sorted[1][0] : 'None'}`);
+        }
+
+        // Reweight
+        votes.forEach((v, i) => {
+            let satisfaction = 0;
+            winners.forEach(w => satisfaction += v.scores[w.film]);
+            let oldW = weights[i];
+            weights[i] = 1.0 / (1.0 + (satisfaction / 10.0));
+            
+            // Log first voter only for debugging
+            if(doLog && i === 0 && round === 1) {
+                log.push(`  [Debug Voter 1] Old Weight: ${oldW.toFixed(2)} -> New Weight: ${weights[i].toFixed(2)} (Sat: ${satisfaction})`);
+            }
+        });
+        candidates = candidates.filter(c => c !== winner);
+    }
+    return { winners, log };
+}
+
+function runSTV(votes, simSeed, doLog = false) {
+    let elected = [];
+    let log = [];
+    const SEATS = 10;
+    
+    // 1. Convert to Ranked Ballots
+    let ballots = votes.map((v, idx) => {
+        let valid = Object.entries(v.scores).filter(e => e[1] > 0);
+        let localSeed = idx * 7919 + simSeed; 
+        valid.sort((a,b) => {
+            if (b[1] !== a[1]) return b[1] - a[1];
+            localSeed = (localSeed * 16807) % 2147483647;
+            return (localSeed % 2 === 0) ? 1 : -1;
+        });
+        return { choices: valid.map(e => e[0]), weight: 1.0 };
+    });
+    
+    let quota = Math.floor(ballots.length / (SEATS + 1)) + 1;
+    if(doLog) log.push(`Quota calculated: ${quota}`);
+
+    // Tie-break shuffle
+    let shuffleSeed = simSeed + 9999;
+    const seededRand = () => { shuffleSeed = (shuffleSeed * 16807) % 2147483647; return (shuffleSeed-1)/2147483646; };
+    let candidates = [...FILMS].sort(() => seededRand() - 0.5);
+
+    let round = 1;
+    while(elected.length < SEATS && candidates.length > 0) {
+        if(doLog) log.push(`\n--- ROUND ${round} ---`);
+        
+        let tally = {};
+        candidates.forEach(c => tally[c] = 0);
+        ballots.forEach(b => {
+            let top = b.choices.find(c => candidates.includes(c));
+            if(top) tally[top] += b.weight;
+        });
+        
+        let sortedTally = Object.entries(tally).sort((a,b) => {
+            if(b[1] !== a[1]) return b[1] - a[1];
+            return seededRand() - 0.5; 
+        });
+
+        if(doLog) log.push(`Leaders: ${sortedTally.slice(0,3).map(x=>x[0]+' ('+x[1].toFixed(2)+')').join(', ')}`);
+
+        let roundWinners = sortedTally.filter(e => e[1] >= quota);
+        
+        if(roundWinners.length > 0) {
+            let winner = roundWinners[0][0];
+            elected.push({ film: winner, round: round });
+            candidates = candidates.filter(c => c !== winner);
+            
+            if(doLog) log.push(`ELECTED: ${winner}`);
+
+            let surplus = roundWinners[0][1] - quota;
+            let ratio = surplus / roundWinners[0][1];
+            if(surplus > 0) {
+                if(doLog) log.push(`  Surplus: ${surplus.toFixed(2)}. Transfer Ratio: ${ratio.toFixed(4)}`);
+                ballots.forEach(b => {
+                    let top = b.choices.find(c => c === winner || candidates.includes(c));
+                    if(top === winner) b.weight *= ratio;
+                });
+            }
+        } else {
+            let loser = sortedTally[sortedTally.length - 1][0];
+            let loserVotes = sortedTally[sortedTally.length - 1][1];
+            candidates = candidates.filter(c => c !== loser);
+            if(doLog) log.push(`ELIMINATED: ${loser} (${loserVotes.toFixed(2)} votes)`);
+        }
+        
+        round++;
+        if(candidates.length + elected.length <= SEATS) {
+            candidates.forEach(c => {
+                elected.push({film:c, round:"Auto"});
+                if(doLog) log.push(`AUTO-ELECTED: ${c} (survived to end)`);
+            });
+            break;
+        }
+        if(round > 100) break;
+    }
+    return { elected, ballots, log };
+}
+
+
+
+
+// --- EXECUTION ---
+
+function runSingleSimulation() {
+    let mainSeed = parseInt(document.getElementById('seed-input').value);
+    let votes = generateVotes(mainSeed);
+    
+    // RRV (Logging Enabled)
+    let rrvRes = runRRV(votes, true);
+    let rrvWinners = rrvRes.winners;
+    
+    // Output RRV Log
+    document.getElementById('log-rrv').value = rrvRes.log.join('\n');
+
+    const rrvBody = document.querySelector('#rrv-table tbody');
+    rrvBody.innerHTML = '';
+    rrvWinners.forEach(w => {
+        let tr = document.createElement('tr');
+        if(w.rank >= 9) tr.classList.add('bubble');
+        tr.innerHTML = `<td>${w.rank}</td><td>${w.film}</td><td>${w.score.toFixed(2)}</td>`;
+        rrvBody.appendChild(tr);
+    });
+    
+    // Bubble Analysis
+    let w9 = rrvWinners[8];
+    let w10 = rrvWinners[9];
+    document.getElementById('bubble-9').innerText = w9.film;
+    document.getElementById('bubble-10').innerText = w10.film;
+    document.getElementById('bubble-margin').innerText = `Margin: ${w10.margin.toFixed(2)} pts`;
+    
+    // STV (Logging Enabled)
+    let stvRes = runSTV(votes, mainSeed, true);
+    
+    // Output STV Log
+    document.getElementById('log-stv').value = stvRes.log.join('\n');
+
+    const stvBody = document.querySelector('#stv-table tbody');
+    stvBody.innerHTML = '';
+    stvRes.elected.forEach((w, i) => {
+        let tr = document.createElement('tr');
+        tr.innerHTML = `<td>${i+1}</td><td>${w.film}</td><td>${w.round}</td>`;
+        stvBody.appendChild(tr);
+    });
+
+    renderInspector(votes, stvRes.ballots);
+
+    // System Comparison
+    let rrvSet = new Set(rrvWinners.map(w => w.film));
+    let stvSet = new Set(stvRes.elected.map(w => w.film));
+    let onlyRRV = [...rrvSet].filter(x => !stvSet.has(x));
+    let onlySTV = [...stvSet].filter(x => !rrvSet.has(x));
+    
+    let html = '';
+    if(onlyRRV.length === 0) {
+        html = '<div style="color:green; font-weight:bold; padding:10px;">Perfect Match: Both systems selected the exact same 10 films.</div>';
+    } else {
+        html += `<div style="margin-bottom:15px; padding:10px; background:#e8f5e9; border:1px solid #c8e6c9; border-radius:4px;">
+                    <strong style="color:var(--rrv-color)">Only in Range Reweighted (Consensus):</strong><br>
+                    <span style="font-size:0.9rem">${onlyRRV.join(', ')}</span>
+                 </div>`;
+        html += `<div style="padding:10px; background:#e3f2fd; border:1px solid #bbdefb; border-radius:4px;">
+                    <strong style="color:var(--stv-color)">Only in Preferential (Passion):</strong><br>
+                    <span style="font-size:0.9rem">${onlySTV.join(', ')}</span>
+                 </div>`;
+    }
+    document.getElementById('comp-output').innerHTML = html;
+    
+    // NOTE: Removed switchTab here so it doesn't auto-jump if you are just playing with sliders
+    // switchTab('tab-results'); 
+}
+
+function runMonteCarlo() {
+    document.getElementById('loading').style.display = 'flex';
+    
+    setTimeout(() => {
+        const ITERATIONS = 1000;
+        let mainSeed = parseInt(document.getElementById('seed-input').value);
+        let stats = {};
+        FILMS.forEach(f => stats[f] = { rrvWins: 0, stvWins: 0 });
+        
+        for(let i=0; i<ITERATIONS; i++) {
+            let iterSeed = mainSeed + i;
+            let votes = generateVotes(iterSeed);
+            
+            // Run without logging (false) for speed
+            let rrvW = runRRV(votes, false).winners;
+            rrvW.forEach(w => stats[w.film].rrvWins++);
+            
+            let stvW = runSTV(votes, iterSeed, false).elected;
+            stvW.forEach(w => stats[w.film].stvWins++);
+        }
+        
+        renderMonteTable(stats, ITERATIONS);
+        document.getElementById('loading').style.display = 'none';
+        switchTab('tab-monte');
+    }, 100);
+}
+
+
+function renderMonteTable(stats, total) {
+    const tbody = document.querySelector('#monte-table tbody');
+    tbody.innerHTML = '';
+    
+    let rows = Object.entries(stats).map(([film, data]) => {
+        let rrvPct = (data.rrvWins / total) * 100;
+        let stvPct = (data.stvWins / total) * 100;
+        let delta = rrvPct - stvPct; // Positive = RRV favored, Negative = STV favored
+        return { film, rrvPct, stvPct, delta };
+    });
+    
+    // Sort by Total Win Average
+    rows.sort((a,b) => (b.rrvPct + b.stvPct) - (a.rrvPct + a.stvPct));
+    
+    rows.forEach(r => {
+        let tr = document.createElement('tr');
+        
+        // System Bias Bar
+        let barColor = r.delta > 0 ? 'var(--rrv-color)' : 'var(--stv-color)';
+        let barWidth = Math.abs(r.delta); // simplified scaling
+        // Cap visual width
+        if(barWidth > 100) barWidth = 100;
+        
+        let biasLabel = "";
+        if(Math.abs(r.delta) < 5) biasLabel = `<span style="color:#aaa; font-size:0.8rem;">Neutral</span>`;
+        else if(r.delta > 0) biasLabel = `<span class="tag-consensus">Consensus +${r.delta.toFixed(0)}%</span>`;
+        else biasLabel = `<span class="tag-passion">Passion +${Math.abs(r.delta).toFixed(0)}%</span>`;
+        
+        tr.innerHTML = `
+            <td style="font-weight:bold;">${r.film}</td>
+            <td>
+                <div class="bar-container"><div class="bar-fill" style="width:${r.rrvPct}%; background:var(--rrv-color);"></div></div>
+                ${r.rrvPct.toFixed(1)}%
+            </td>
+            <td>
+                <div class="bar-container"><div class="bar-fill" style="width:${r.stvPct}%; background:var(--stv-color);"></div></div>
+                ${r.stvPct.toFixed(1)}%
+            </td>
+            <td>${biasLabel}</td>
+        `;
+        tbody.appendChild(tr);
+    });
+}
+
+function renderInspector(votes, ballots) {
+    const c = document.getElementById('inspector-container');
+    c.innerHTML = '';
+
+
+    // Show first 15 for brevity
+    // votes.slice(0, 15).forEach((v, i) => {
+
+    // CHANGED: Removed .slice(0, 15) so it now shows EVERY voter
+    votes.forEach((v, i) => {
+        let div = document.createElement('div');
+        div.className = 'voter-block';
+        
+        let rankedList = ballots[i].choices;
+        
+        const getScoreClass = (s) => {
+            if(s===10) return 'score-10';
+            if(s>=8) return 'score-8-9';
+            if(s>=5) return 'score-5-7';
+            if(s>=1) return 'score-1-4';
+            return 'score-0';
+        };
+
+        // Filter and Sort scores
+        let sortedVotes = Object.entries(v.scores)
+            .filter(([film, score]) => score > 0)
+            .sort((a, b) => {
+                let diff = b[1] - a[1];
+                if (diff !== 0) return diff;
+                return a[0].localeCompare(b[0]);
+            });
+
+        let scoresHTML = '';
+        sortedVotes.forEach(([film, score]) => {
+            scoresHTML += `<span class="vote-pill ${getScoreClass(score)}">${film}: ${score}</span>`;
+        });
+
+        let rankHTML = '';
+        rankedList.slice(0, 5).forEach((film, r) => {
+            rankHTML += `<div>${r+1}. ${film}</div>`;
+        });
+        if(rankedList.length > 5) rankHTML += `<div style="color:#888; font-size:0.8rem;">...and ${rankedList.length-5} more</div>`;
+
+        div.innerHTML = `
+            <div class="voter-header"><span>${v.id} (${v.groupName})</span></div>
+            <div class="voter-data">
+                <div>${scoresHTML}</div>
+                <div>${rankHTML}</div>
+            </div>`;
+        
+        // CSS for voter block
+        div.style.background = "white"; div.style.marginBottom = "15px"; div.style.borderRadius = "6px"; 
+        div.style.padding = "15px"; div.style.border = "1px solid #eee";
+        div.querySelector('.voter-header').style.cssText = "display:flex; justify-content:space-between; font-weight:bold; margin-bottom:10px; color:var(--accent);";
+        div.querySelector('.voter-data').style.cssText = "display:grid; grid-template-columns: 2fr 1fr; gap:20px;";
+        
+        c.appendChild(div);
+    });
+    
+    // Add styles for pills dynamically if missing (basic safety)
+    if(!document.getElementById('pill-style')) {
+        let s = document.createElement('style');
+        s.id = 'pill-style';
+        s.innerHTML = `.vote-pill { display: inline-block; padding: 2px 6px; border-radius: 4px; font-size: 0.8rem; margin: 2px; border: 1px solid #ddd; }`;
+        document.head.appendChild(s);
+    }
+}
+
+
+// --- SAVE / LOAD SYSTEM ---
+
+function saveConfig() {
+    // 1. Gather current state
+    const config = {
+        version: "3.0",
+        timestamp: new Date().toISOString(),
+        seed: document.getElementById('seed-input').value,
+        variance: document.getElementById('variance-slider').value,
+        groups: GROUPS.map(g => ({ name: g.name, count: g.count })), 
+        matrix: currentMatrix
+    };
+
+    // 2. Stringify (Standard formatting)
+    let jsonStr = JSON.stringify(config, null, 2);
+
+    // 3. CLEANUP A: Collapse number arrays back to single lines
+    // Finds arrays like [ \n 1, \n 2 \n ] and makes them [ 1, 2 ]
+    jsonStr = jsonStr.replace(/\[\s*([\d,\s]+?)\s*\]/g, (match) => {
+        let cleanNums = match.replace(/[\[\]\s]/g, ''); 
+        return '[' + cleanNums.split(',').join(', ') + ']';
+    });
+
+    // 4. CLEANUP B: Align Columns
+    // Find longest film title to calculate padding
+    const matrixKeys = Object.keys(currentMatrix);
+    const maxKeyLen = matrixKeys.reduce((max, k) => Math.max(max, k.length), 0);
+
+    matrixKeys.forEach(key => {
+        // Calculate needed spaces
+        const padding = " ".repeat(maxKeyLen - key.length);
+        
+        // Target specific substring: "FILM": [
+        // We use split/join instead of replace to handle special chars like * safely
+        const search = `"${key}": [`;
+        const replace = `"${key}":${padding} [`;
+        
+        jsonStr = jsonStr.split(search).join(replace);
+    });
+    
+    // 5. Download
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(jsonStr);
+    const downloadAnchorNode = document.createElement('a');
+    downloadAnchorNode.setAttribute("href", dataStr);
+    downloadAnchorNode.setAttribute("download", "academy_voting_config.json");
+    document.body.appendChild(downloadAnchorNode);
+    downloadAnchorNode.click();
+    downloadAnchorNode.remove();
+}
+
+
+function loadConfig(input) {
+    const file = input.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        try {
+            const config = JSON.parse(e.target.result);
+            
+            // 1. Restore Simulation Settings
+            if(config.seed) document.getElementById('seed-input').value = config.seed;
+            if(config.variance) document.getElementById('variance-slider').value = config.variance;
+            
+            // 2. Restore Group Counts
+            if(config.groups) {
+                config.groups.forEach((savedGroup, i) => {
+                    // Update global GROUPS array
+                    if(GROUPS[i]) GROUPS[i].count = savedGroup.count;
+                });
+                // Update UI Sliders
+                renderSliders(); 
+            }
+
+            // 3. Restore Matrix
+            if(config.matrix) {
+                currentMatrix = config.matrix;
+                renderMatrix();
+            }
+
+            // 4. Run to show new results
+            runSingleSimulation();
+            alert("Configuration loaded successfully!");
+            
+        } catch (err) {
+            alert("Error parsing configuration file: " + err);
+        }
+    };
+    reader.readAsText(file);
+    
+    // Reset input so same file can be selected again if needed
+    input.value = '';
+}
+
+init();
+</script>
+</body>
+</html>
