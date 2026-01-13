@@ -126,6 +126,7 @@ u<!DOCTYPE html>
         <div class="control-group">
             <label>Voter Composition (Total: <span id="total-voters">35</span>)</label>
             <div id="sliders-container"></div>
+            <button onclick="addArchetype()" style="margin-top:10px; width:100%; padding:5px; background:#fff; border:1px dashed #aaa; color:#555; cursor:pointer; font-size:0.8rem;">+ Add Archetype</button>
         </div>
 
         <div class="control-group">
@@ -146,10 +147,13 @@ u<!DOCTYPE html>
         </div>
 
 	<div class="control-group" style="border-bottom:none; margin-bottom:10px;">
-            <div style="display:flex; gap:10px;">
+            <div style="display:flex; gap:10px; margin-bottom:8px;">
                 <button onclick="saveConfig()" style="flex:1; background:#fff; border:1px solid #ccc; color:#333; padding:8px; border-radius:4px; cursor:pointer; font-weight:bold;">💾 Save</button>
-                <button onclick="document.getElementById('load-file').click()" style="flex:1; background:#fff; border:1px solid #ccc; color:#333; padding:8px; border-radius:4px; cursor:pointer; font-weight:bold;">📂 Load</button>
+                <button onclick="_isAppendMode=false; document.getElementById('load-file').click()" style="flex:1; background:#fff; border:1px solid #ccc; color:#333; padding:8px; border-radius:4px; cursor:pointer; font-weight:bold;">📂 Load</button>
             </div>
+            <button onclick="_isAppendMode=true; document.getElementById('load-file').click()" style="width:100%; background:transparent; border:1px dashed #aaa; color:#666; padding:6px; cursor:pointer; font-size:0.85rem; border-radius:4px;">
+                ➕ Merge / Append Config
+            </button>
             <input type="file" id="load-file" style="display:none" onchange="loadConfig(this)">
         </div>
 
@@ -356,6 +360,7 @@ let currentMatrix = JSON.parse(JSON.stringify(DEFAULT_MATRIX));
 let rrvTestLog = '';
 let stvTestLog = '';
 let voterJourneys = {}; // Stores per-voter journey data for visualization
+let _isAppendMode = false; // Flag for loadConfig behavior
 
 // --- SEEDED RANDOM (LCG) ---
 let _seed = 1234;
@@ -384,8 +389,11 @@ function renderSliders() {
     GROUPS.forEach((g, i) => {
         let div = document.createElement('div');
         div.innerHTML = `
-            <div class="slider-row" style="margin-top:8px;">
-                <span style="font-size:0.8rem; font-weight:bold; width:120px;">${g.name}</span>
+            <div class="slider-row" style="margin-top:8px; align-items: center;">
+                <div style="width:120px; display:flex; align-items:center;">
+                    <span onclick="renameArchetype(${i})" style="font-size:0.8rem; font-weight:bold; cursor:pointer; border-bottom:1px dotted #999; margin-right:5px;" title="Click to rename">${g.name}</span>
+                    <span onclick="removeArchetype(${i})" style="color:#aaa; cursor:pointer; font-size:0.8rem; padding:0 3px;" title="Remove">✕</span>
+                </div>
                 <input type="range" id="sl-${i}" min="0" max="35" value="${g.count}" oninput="updateCounts(${i})">
                 <span id="sl-val-${i}" class="slider-val">${g.count}</span>
             </div>`;
@@ -393,8 +401,64 @@ function renderSliders() {
     });
 }
 
+// --- DYNAMIC ARCHETYPE MANAGEMENT ---
+
+function addArchetype() {
+    let name = prompt("Enter name for new archetype:", "New Group");
+    if(!name) return;
+    
+    // Generate simple ID
+    let baseId = name.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0,5) || "group";
+    let newId = baseId;
+    let suffix = 1;
+    while(GROUPS.find(g => g.id === newId)) {
+        newId = baseId + "_" + suffix++;
+    }
+
+    GROUPS.push({ id: newId, name: name, count: 5 });
+
+    // Update Matrix columns (append 0s)
+    Object.keys(currentMatrix).forEach(film => {
+        currentMatrix[film].push(0);
+    });
+
+    renderSliders();
+    renderMatrix();
+    runSingleSimulation();
+}
+
+function removeArchetype(index) {
+    if(GROUPS.length <= 1) {
+        alert("Cannot remove the last archetype.");
+        return;
+    }
+    if(!confirm(`Remove "${GROUPS[index].name}"?`)) return;
+
+    GROUPS.splice(index, 1);
+
+    // Update Matrix columns (splice out index)
+    Object.keys(currentMatrix).forEach(film => {
+        currentMatrix[film].splice(index, 1);
+    });
+
+    renderSliders();
+    renderMatrix();
+    runSingleSimulation();
+}
+
+function renameArchetype(index) {
+    let newName = prompt("Rename archetype:", GROUPS[index].name);
+    if(newName) {
+        GROUPS[index].name = newName;
+        renderSliders();
+        renderMatrix();
+    }
+}
+
 function updateCounts(idx) {
-    let val = document.getElementById(`sl-${idx}`).value;
+    let el = document.getElementById(`sl-${idx}`);
+    if(!el) return; // safety
+    let val = el.value;
     document.getElementById(`sl-val-${idx}`).innerText = val;
     GROUPS[idx].count = parseInt(val);
     let total = GROUPS.reduce((a,b) => a + b.count, 0);
@@ -429,6 +493,9 @@ function renderMatrix() {
             let td = document.createElement('td');
             td.style.textAlign = 'center';
             let val = currentMatrix[film][gIdx];
+            // Safety check if column exists
+            if (val === undefined) { val = 0; currentMatrix[film][gIdx] = 0; }
+            
             let input = document.createElement('input');
             input.type = 'number';
             input.min = 0; input.max = 10;
@@ -1188,30 +1255,70 @@ function loadConfig(input) {
     reader.onload = function(e) {
         try {
             const config = JSON.parse(e.target.result);
-            
+            const appendMode = _isAppendMode;
+
             // 1. Restore Simulation Settings
             if(config.seed) document.getElementById('seed-input').value = config.seed;
             if(config.variance) document.getElementById('variance-slider').value = config.variance;
             
-            // 2. Restore Group Counts
-            if(config.groups) {
-                config.groups.forEach((savedGroup, i) => {
-                    // Update global GROUPS array
-                    if(GROUPS[i]) GROUPS[i].count = savedGroup.count;
-                });
-                // Update UI Sliders
-                renderSliders(); 
-            }
+            if (appendMode) {
+                // APPEND MODE
+                if(config.groups && config.matrix) {
+                    let newGroups = config.groups;
+                    
+                    newGroups.forEach((ng, ngIdx) => {
+                        // Ensure unique ID
+                        let baseId = ng.id || "imported";
+                        let newId = baseId;
+                        let suffix = 1;
+                        while(GROUPS.find(g => g.id === newId)) {
+                            newId = baseId + "_" + suffix++;
+                        }
+                        
+                        // Add group
+                        GROUPS.push({ id: newId, name: ng.name + (suffix > 1 ? ` (${suffix})` : ""), count: ng.count });
 
-            // 3. Restore Matrix
-            if(config.matrix) {
-                currentMatrix = config.matrix;
-                renderMatrix();
+                        // Add columns to matrix
+                        Object.keys(currentMatrix).forEach(film => {
+                            // If film exists in loaded config, take value. Else 0.
+                            let val = 0;
+                            if (config.matrix[film] && config.matrix[film][ngIdx] !== undefined) {
+                                val = config.matrix[film][ngIdx];
+                            }
+                            currentMatrix[film].push(val);
+                        });
+                    });
+                    
+                    renderSliders();
+                    renderMatrix();
+                    alert(`Successfully appended ${newGroups.length} archetypes!`);
+                }
+            } else {
+                // REPLACE MODE (Original Logic)
+                if(config.groups) {
+                    // Update global GROUPS array entirely
+                    // We must clear the array and push to keep reference if it was const, 
+                    // but here it is const reference to objects? No, GROUPS is const array.
+                    // Actually GROUPS is const array reference, so we can't do GROUPS = ...
+                    // Wait, previous code said `GROUPS[i].count = ...`. 
+                    // `const GROUPS` means we can't reassign the variable, but we can modify contents.
+                    // But we want to replace the whole list.
+                    // Let's truncate and push.
+                    GROUPS.length = 0;
+                    config.groups.forEach(g => GROUPS.push(g));
+                    
+                    renderSliders(); 
+                }
+
+                if(config.matrix) {
+                    currentMatrix = config.matrix;
+                    renderMatrix();
+                }
+                alert("Configuration loaded successfully!");
             }
 
             // 4. Run to show new results
             runSingleSimulation();
-            alert("Configuration loaded successfully!");
             
         } catch (err) {
             alert("Error parsing configuration file: " + err);
