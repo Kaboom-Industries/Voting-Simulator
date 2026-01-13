@@ -82,6 +82,32 @@ u<!DOCTYPE html>
         #loading { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(255,255,255,0.8); z-index: 1000; justify-content: center; align-items: center; flex-direction: column; }
         .spinner { width: 40px; height: 40px; border: 4px solid #f3f3f3; border-top: 4px solid var(--gold); border-radius: 50%; animation: spin 1s linear infinite; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+        /* Voter Journey Cards */
+        .voter-journey-card {
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+            transition: all 0.2s ease-in-out;
+            border-left: 5px solid;
+        }
+        .voter-journey-card h4 {
+            margin-top: 0;
+            margin-bottom: 10px;
+            font-size: 1rem;
+            color: var(--accent);
+        }
+        .voter-journey-card p {
+            margin: 5px 0;
+            font-size: 0.9rem;
+            color: #555;
+        }
+
+        /* Impact Color Coding */
+        .voter-journey-card.impact-high { border-left-color: var(--gold); background-color: #fffde7; } /* Light yellow */
+        .voter-journey-card.impact-medium { border-left-color: var(--rrv-color); background-color: #e8f5e9; } /* Light green */
+        .voter-journey-card.impact-low { border-left-color: var(--stv-color); background-color: #e3f2fd; } /* Light blue */
+        .voter-journey-card.impact-none { border-left-color: #ccc; background-color: #f8f8f8; } /* Light grey */
     </style>
 </head>
 <body>
@@ -137,8 +163,9 @@ u<!DOCTYPE html>
         <div class="tab active" onclick="switchTab('tab-matrix')">1. Matrix Editor</div>
         <div class="tab" onclick="switchTab('tab-inspector')">2. Voter Inspector</div>
         <div class="tab" onclick="switchTab('tab-results')">3. Single Result</div>
-        <div class="tab" onclick="switchTab('tab-logs')">4. Single Calc Logs</div>
-        <div class="tab" onclick="switchTab('tab-monte')">5. Monte Carlo Analysis</div>
+        <div class="tab" onclick="switchTab('tab-voter-journey')">4. Voter Journey</div>
+        <div class="tab" onclick="switchTab('tab-logs')">5. Single Calc Logs</div>
+        <div class="tab" onclick="switchTab('tab-monte')">6. Monte Carlo Analysis</div>
     </div>
 
 
@@ -242,6 +269,27 @@ u<!DOCTYPE html>
         </div>
     </div>
 
+    <div id="tab-voter-journey" class="tab-content">
+        <h2 style="margin-top:0;">Voter Journey</h2>
+        <div style="margin-bottom: 15px; display:flex; align-items:center;">
+            <label for="voter-select" style="font-weight:bold; margin-right:10px;">Select Voter:</label>
+            <button onclick="prevVoter()" style="padding:5px 10px; margin-right:5px; border:1px solid #ccc; border-radius:4px; cursor:pointer;">⬅️</button>
+            <select id="voter-select" onchange="renderVoterJourney(this.value)" style="padding:8px; border-radius:4px; border:1px solid #ddd; margin-right:5px;"></select>
+            <button onclick="nextVoter()" style="padding:5px 10px; border:1px solid #ccc; border-radius:4px; cursor:pointer;">➡️</button>
+            <span style="font-size:0.8rem; color:#888; margin-left:15px;">(Use Arrow Keys Up/Down to switch)</span>
+        </div>
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:20px; height:100%;">
+            <div id="rrv-journey-display" style="display:flex; flex-direction:column; gap:10px;">
+                <h3>Range Reweighted (RRV) Journey</h3>
+                <div style="font-style:italic; color:#666;">Select a voter to see their journey.</div>
+            </div>
+            <div id="stv-journey-display" style="display:flex; flex-direction:column; gap:10px;">
+                <h3>Preferential (STV) Journey</h3>
+                <div style="font-style:italic; color:#666;">Select a voter to see their journey.</div>
+            </div>
+        </div>
+    </div>
+
     <div id="tab-inspector" class="tab-content">
         <h2>Individual Voter Inspector</h2>
         <div id="inspector-container"></div>
@@ -307,6 +355,7 @@ const DEFAULT_MATRIX = {
 let currentMatrix = JSON.parse(JSON.stringify(DEFAULT_MATRIX));
 let rrvTestLog = '';
 let stvTestLog = '';
+let voterJourneys = {}; // Stores per-voter journey data for visualization
 
 // --- SEEDED RANDOM (LCG) ---
 let _seed = 1234;
@@ -413,7 +462,8 @@ function generateVotes(simSeed) {
     GROUPS.forEach((g, gIdx) => {
         if(g.count === 0) return;
         for(let i=0; i<g.count; i++) {
-            let voter = { id: `${g.id}_${i+1}`, groupName: g.name, scores: {} };
+            let idSuffix = (i+1).toString().padStart(2, '0');
+            let voter = { id: `${g.id}_${idSuffix}`, groupName: g.name, scores: {} };
             FILMS.forEach(film => {
                 let masterScore = currentMatrix[film][gIdx];
                 if(masterScore === 0) {
@@ -440,6 +490,11 @@ function runRRV(votes, doLog = false, filmCandidates = FILMS, seatsToFill = 10) 
     const MAX_SEATS = seatsToFill;
     const voterIdsToTrack = ['vfx_1', 'gen_1']; // Voters to follow
     const trackedVoterIndices = votes.map((v,i) => voterIdsToTrack.includes(v.id) ? i : -1).filter(i => i !== -1);
+
+    // Initialize rrvJourney for each voter
+    if (doLog) {
+        votes.forEach(v => v.rrvJourney = []);
+    }
 
     if(doLog) {
         log.push(`--- RRV Simulation ---`);
@@ -476,6 +531,24 @@ function runRRV(votes, doLog = false, filmCandidates = FILMS, seatsToFill = 10) 
                     log.push(`    - Effective contribution: ${effectiveVote.toFixed(2)} points`);
                 });
             }
+
+            // Capture per-voter data for the current round BEFORE reweighting
+            votes.forEach((v, i) => {
+                const voterScoreForWinner = v.scores[winner] || 0;
+                const effectiveVote = voterScoreForWinner * weights[i];
+                let satisfaction = 0;
+                winners.forEach(w => satisfaction += v.scores[w.film]); // Calculate satisfaction based on winners *so far*
+                
+                v.rrvJourney.push({
+                    round: round,
+                    winner: winner,
+                    voterScoreForWinner: voterScoreForWinner,
+                    oldWeight: weights[i],
+                    effectiveContribution: effectiveVote,
+                    satisfaction: satisfaction,
+                    newWeight: 0 // Will be updated after reweighting
+                });
+            });
         }
 
         // Reweight
@@ -484,6 +557,10 @@ function runRRV(votes, doLog = false, filmCandidates = FILMS, seatsToFill = 10) 
             let satisfaction = 0;
             winners.forEach(w => satisfaction += v.scores[w.film]);
             newWeights[i] = 1.0 / (1.0 + (satisfaction / 10.0));
+            // Update the newWeight in the last journey entry
+            if (doLog) {
+                v.rrvJourney[v.rrvJourney.length - 1].newWeight = newWeights[i];
+            }
         });
 
         if(doLog) {
@@ -504,7 +581,7 @@ function runRRV(votes, doLog = false, filmCandidates = FILMS, seatsToFill = 10) 
         
         candidates = candidates.filter(c => c !== winner);
     }
-    return { winners, log };
+    return { winners, log, votes }; // Return votes array with journey data
 }
 
 function runSTV(votes, simSeed, doLog = false, filmCandidates = FILMS, seatsToFill = 10) {
@@ -520,8 +597,9 @@ function runSTV(votes, simSeed, doLog = false, filmCandidates = FILMS, seatsToFi
         }
     }
 
-    // 1. Convert to Ranked Ballots
-    let ballots = votes.map((v, idx) => {
+    // 1. Convert to Ranked Ballots and initialize stvJourney on the original voter objects
+    // Also create a temporary 'ballots' structure for internal STV logic, linking back to original voter
+    let internalBallots = votes.map((v, idx) => {
         let valid = Object.entries(v.scores).filter(e => e[1] > 0);
         let localSeed = idx * 7919 + simSeed; 
         valid.sort((a,b) => {
@@ -529,17 +607,22 @@ function runSTV(votes, simSeed, doLog = false, filmCandidates = FILMS, seatsToFi
             localSeed = (localSeed * 16807) % 2147483647;
             return (localSeed % 2 === 0) ? 1 : -1;
         });
-        return { voterId: v.id, choices: valid.map(e => e[0]), weight: 1.0 };
+        const choices = valid.map(e => e[0]);
+        if (doLog) {
+            v.stvJourney = []; // Initialize stvJourney directly on the voter object
+        }
+        v.stvChoices = choices; // Store ranked choices on the voter object
+        return { voterId: v.id, choices: choices, weight: 1.0, originalVoter: v };
     });
     
-    const trackedVoterIndices = ballots.map((b,i) => voterIdsToTrack.includes(b.voterId) ? i : -1).filter(i => i !== -1);
+    const trackedVoterIndices = internalBallots.map((b,i) => voterIdsToTrack.includes(b.voterId) ? i : -1).filter(i => i !== -1);
     
-    let quota = Math.floor(ballots.length / (SEATS + 1)) + 1;
+    let quota = Math.floor(internalBallots.length / (SEATS + 1)) + 1;
     if(doLog) {
-        log.push(`Quota calculated: ${quota} (from ${ballots.length} voters for ${SEATS} seats)`);
+        log.push(`Quota calculated: ${quota} (from ${internalBallots.length} voters for ${SEATS} seats)`);
         if (trackedVoterIndices.length > 0) {
             trackedVoterIndices.forEach(i => {
-                const ballot = ballots[i];
+                const ballot = internalBallots[i];
                 log.push(`  - Voter ${ballot.voterId} initial ballot: ${ballot.choices.slice(0,5).join(' > ')}...`);
             });
         }
@@ -552,19 +635,33 @@ function runSTV(votes, simSeed, doLog = false, filmCandidates = FILMS, seatsToFi
 
     let round = 1;
     while(elected.length < SEATS && candidates.length > 0) {
-        if(doLog) log.push(`\n--- ROUND ${round} (Candidates: ${candidates.length}) ---`);
-        
         let tally = {};
         candidates.forEach(c => tally[c] = 0);
-        ballots.forEach(b => {
+        internalBallots.forEach(b => {
             let top = b.choices.find(c => candidates.includes(c));
             if(top) tally[top] += b.weight;
         });
-        
+
         if(doLog) {
+            log.push(`\n--- ROUND ${round} (Candidates: ${candidates.length}) ---`);
+            
+            // Capture per-ballot data for the current round
+            internalBallots.forEach(b => {
+                const topChoice = b.choices.find(c => candidates.includes(c));
+                b.originalVoter.stvJourney.push({ // Store on original voter object
+                    round: round,
+                    currentVoteFor: topChoice || 'Exhausted',
+                    currentWeight: b.weight,
+                    action: 'None', // Will be updated below
+                    candidateAffected: null,
+                    roundOutcome: null, // Global event (Elected/Eliminated)
+                    transferInfo: null
+                });
+            });
+
             if (trackedVoterIndices.length > 0) {
                 trackedVoterIndices.forEach(i => {
-                    const b = ballots[i];
+                    const b = internalBallots[i];
                     const topChoice = b.choices.find(c => candidates.includes(c));
                     log.push(`  - Voter ${b.voterId} (Weight: ${b.weight.toFixed(3)}) is voting for: ${topChoice || 'exhausted'}`);
                 });
@@ -586,20 +683,44 @@ function runSTV(votes, simSeed, doLog = false, filmCandidates = FILMS, seatsToFi
             elected.push({ film: winner, round: round });
             candidates = candidates.filter(c => c !== winner);
             
-            if(doLog) log.push(`ELECTED: ${winner} with ${winnerVotes.toFixed(2)} votes.`);
+            if(doLog) {
+                log.push(`ELECTED: ${winner} with ${winnerVotes.toFixed(2)} votes.`);
+
+                // Update journey for elected candidate AND global outcome
+                internalBallots.forEach(b => {
+                    const lastEntry = b.originalVoter.stvJourney[b.originalVoter.stvJourney.length - 1];
+                    lastEntry.roundOutcome = `Elected: ${winner}`;
+                    
+                    if (lastEntry.currentVoteFor === winner) {
+                        lastEntry.action = 'Elected';
+                        lastEntry.candidateAffected = winner;
+                    }
+                });
+            }
 
             let surplus = winnerVotes - quota;
             if(surplus > 0) {
                 let ratio = surplus / winnerVotes;
                 if(doLog) log.push(`  Surplus of ${surplus.toFixed(2)} to be transferred at ratio ${ratio.toFixed(4)}.`);
                 
-                ballots.forEach((b, i) => {
+                internalBallots.forEach((b, i) => {
                     let top = b.choices.find(c => c === winner || candidates.includes(c));
                     if(top === winner) {
                         const oldWeight = b.weight;
                         b.weight *= ratio;
-                        if(doLog && trackedVoterIndices.includes(i)) {
-                            log.push(`  - Voter ${b.voterId}'s vote contributed. Weight reduced from ${oldWeight.toFixed(3)} to ${b.weight.toFixed(3)}.`);
+                        if(doLog) {
+                            if (trackedVoterIndices.includes(i)) {
+                                log.push(`  - Voter ${b.voterId}'s vote contributed. Weight reduced from ${oldWeight.toFixed(3)} to ${b.weight.toFixed(3)}.`);
+                            }
+                            // Update journey for surplus transfer
+                            b.originalVoter.stvJourney[b.originalVoter.stvJourney.length - 1].transferInfo = {
+                                type: 'Surplus',
+                                from: winner,
+                                to: b.choices.find(c => candidates.includes(c)) || 'Exhausted',
+                                ratio: ratio,
+                                oldWeight: oldWeight,
+                                newWeight: b.weight
+                            };
                         }
                     }
                 });
@@ -614,7 +735,7 @@ function runSTV(votes, simSeed, doLog = false, filmCandidates = FILMS, seatsToFi
                 log.push(`ELIMINATED: ${loser} (${loserVotes.toFixed(2)} votes)`);
                 
                 if (trackedVoterIndices.length > 0) {
-                    ballots.forEach((b, i) => {
+                    internalBallots.forEach((b, i) => {
                         if (trackedVoterIndices.includes(i)) {
                             const topChoice = b.choices.find(c => candidates.includes(c) || c === loser);
                             if (topChoice === loser) {
@@ -624,6 +745,21 @@ function runSTV(votes, simSeed, doLog = false, filmCandidates = FILMS, seatsToFi
                         }
                     });
                 }
+                // Update journey for elimination transfer AND global outcome
+                internalBallots.forEach(b => {
+                    const lastEntry = b.originalVoter.stvJourney[b.originalVoter.stvJourney.length - 1];
+                    lastEntry.roundOutcome = `Eliminated: ${loser}`;
+
+                    if (lastEntry.currentVoteFor === loser) {
+                        lastEntry.action = 'Eliminated';
+                        lastEntry.candidateAffected = loser;
+                        lastEntry.transferInfo = {
+                            type: 'Elimination',
+                            from: loser,
+                            to: b.choices.find(c => candidates.includes(c)) || 'Exhausted'
+                        };
+                    }
+                });
             }
         }
         
@@ -632,7 +768,22 @@ function runSTV(votes, simSeed, doLog = false, filmCandidates = FILMS, seatsToFi
             if(doLog) log.push(`\n--- FINAL STAGE ---`);
             candidates.forEach(c => {
                 elected.push({film:c, round:"Auto"});
-                if(doLog) log.push(`AUTO-ELECTED: ${c} (survived to end)`);
+                if(doLog) {
+                    log.push(`AUTO-ELECTED: ${c} (survived to end)`);
+                    // Update journey for auto-elected candidates AND global outcome
+                    internalBallots.forEach(b => {
+                        const lastEntry = b.originalVoter.stvJourney[b.originalVoter.stvJourney.length - 1];
+                        // Note: In final stage multiple might be auto-elected. We append if it's already set or just set it.
+                        // Since this loop runs for each candidate, we might want to just say "Auto-Elected Phase".
+                        // But let's be specific.
+                        lastEntry.roundOutcome = lastEntry.roundOutcome ? lastEntry.roundOutcome + `, Auto: ${c}` : `Auto: ${c}`;
+
+                        if (b.originalVoter.stvJourney[b.originalVoter.stvJourney.length - 1].currentVoteFor === c) {
+                            b.originalVoter.stvJourney[b.originalVoter.stvJourney.length - 1].action = 'Auto-Elected';
+                            b.originalVoter.stvJourney[b.originalVoter.stvJourney.length - 1].candidateAffected = c;
+                        }
+                    });
+                }
             });
             break;
         }
@@ -641,7 +792,7 @@ function runSTV(votes, simSeed, doLog = false, filmCandidates = FILMS, seatsToFi
             break;
         }
     }
-    return { elected, ballots, log };
+    return { elected, log }; // No longer returning ballots
 }
 
 
@@ -678,6 +829,15 @@ function runSingleSimulation() {
     // STV (Logging Enabled)
     let stvRes = runSTV(votes, mainSeed, true, FILMS, 10);
     
+    // Aggregate journey data for all voters
+    voterJourneys = {};
+    votes.forEach(v => {
+        voterJourneys[v.id] = {
+            rrv: v.rrvJourney,
+            stv: v.stvJourney
+        };
+    });
+    
     // Output STV Log
     document.getElementById('log-stv').value = stvTestLog + stvRes.log.join('\n');
 
@@ -689,7 +849,7 @@ function runSingleSimulation() {
         stvBody.appendChild(tr);
     });
 
-    renderInspector(votes, stvRes.ballots);
+    renderInspector(votes); // Pass the original votes array
 
     // System Comparison
     let rrvSet = new Set(rrvWinners.map(w => w.film));
@@ -712,6 +872,9 @@ function runSingleSimulation() {
     }
     document.getElementById('comp-output').innerHTML = html;
     
+    // Populate voter select dropdown and render first voter's journey
+    populateVoterSelect();
+
     // NOTE: Removed switchTab here so it doesn't auto-jump if you are just playing with sliders
     // switchTab('tab-results'); 
 }
@@ -788,20 +951,15 @@ function renderMonteTable(stats, total) {
     });
 }
 
-function renderInspector(votes, ballots) {
+function renderInspector(votes) {
     const c = document.getElementById('inspector-container');
     c.innerHTML = '';
 
-
-    // Show first 15 for brevity
-    // votes.slice(0, 15).forEach((v, i) => {
-
-    // CHANGED: Removed .slice(0, 15) so it now shows EVERY voter
     votes.forEach((v, i) => {
         let div = document.createElement('div');
         div.className = 'voter-block';
         
-        let rankedList = ballots[i].choices;
+        let rankedList = v.stvChoices || [];
         
         const getScoreClass = (s) => {
             if(s===10) return 'score-10';
@@ -854,6 +1012,116 @@ function renderInspector(votes, ballots) {
         s.innerHTML = `.vote-pill { display: inline-block; padding: 2px 6px; border-radius: 4px; font-size: 0.8rem; margin: 2px; border: 1px solid #ddd; }`;
         document.head.appendChild(s);
     }
+}
+
+// --- VOTER JOURNEY FUNCTIONS ---
+function prevVoter() {
+    const select = document.getElementById('voter-select');
+    if (select.selectedIndex > 0) {
+        select.selectedIndex--;
+        renderVoterJourney(select.value);
+    }
+}
+
+function nextVoter() {
+    const select = document.getElementById('voter-select');
+    if (select.selectedIndex < select.options.length - 1) {
+        select.selectedIndex++;
+        renderVoterJourney(select.value);
+    }
+}
+
+// Global Keyboard Shortcuts
+document.addEventListener('keydown', (e) => {
+    // Check if Voter Journey tab is active
+    const journeyTab = document.getElementById('tab-voter-journey');
+    if (journeyTab && journeyTab.classList.contains('active')) {
+        if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') {
+            e.preventDefault(); // Prevent scrolling
+            prevVoter();
+        } else if (e.key === 'ArrowDown' || e.key === 'ArrowRight') {
+            e.preventDefault(); // Prevent scrolling
+            nextVoter();
+        }
+    }
+});
+
+function populateVoterSelect() {
+    const select = document.getElementById('voter-select');
+    select.innerHTML = ''; // Clear previous options
+    const voterIds = Object.keys(voterJourneys).sort();
+    voterIds.forEach(voterId => {
+        const option = document.createElement('option');
+        option.value = voterId;
+        option.textContent = voterId;
+        select.appendChild(option);
+    });
+    // Select the first voter by default and render their journey
+    if (voterIds.length > 0) {
+        select.value = voterIds[0];
+        renderVoterJourney(voterIds[0]);
+    }
+}
+
+function renderVoterJourney(voterId) {
+    const rrvDisplay = document.getElementById('rrv-journey-display');
+    const stvDisplay = document.getElementById('stv-journey-display');
+    rrvDisplay.innerHTML = '<h3>Range Reweighted (RRV) Journey</h3>';
+    stvDisplay.innerHTML = '<h3>Preferential (STV) Journey</h3>';
+
+    const journey = voterJourneys[voterId];
+    if (!journey) {
+        rrvDisplay.innerHTML += '<div style="font-style:italic; color:#666;">No data for this voter.</div>';
+        stvDisplay.innerHTML += '<div style="font-style:italic; color:#666;">No data for this voter.</div>';
+        return;
+    }
+
+    // Render RRV Journey
+    journey.rrv.forEach(roundData => {
+        let impactClass = 'impact-low'; // Default
+        if (roundData.effectiveContribution > 5) impactClass = 'impact-medium';
+        if (roundData.effectiveContribution > 8) impactClass = 'impact-high';
+
+        rrvDisplay.innerHTML += `
+            <div class="card voter-journey-card ${impactClass}">
+                <h4>Round ${roundData.round}: ${roundData.winner} wins</h4>
+                <p>Your score for ${roundData.winner}: ${roundData.voterScoreForWinner}/10</p>
+                <p>Your weight this round: ${roundData.oldWeight.toFixed(2)}</p>
+                <p>Your effective contribution: ${roundData.effectiveContribution.toFixed(2)} points</p>
+                <p>Cumulative satisfaction: ${roundData.satisfaction.toFixed(2)}</p>
+                <p>New weight for next round: ${roundData.newWeight.toFixed(2)}</p>
+            </div>
+        `;
+    });
+
+    // Render STV Journey
+    journey.stv.forEach(roundData => {
+        let impactClass = 'impact-low'; // Default
+        if (roundData.action === 'Elected' || roundData.action === 'Auto-Elected') impactClass = 'impact-high';
+        if (roundData.action === 'Eliminated') impactClass = 'impact-medium';
+        if (roundData.currentWeight < 0.5) impactClass = 'impact-low';
+        if (roundData.currentVoteFor === 'Exhausted') impactClass = 'impact-none';
+
+
+        let transferDetails = '';
+        if (roundData.transferInfo) {
+            if (roundData.transferInfo.type === 'Surplus') {
+                transferDetails = `(Surplus transfer: ${roundData.transferInfo.oldWeight.toFixed(2)} -> ${roundData.transferInfo.newWeight.toFixed(2)})`;
+            } else if (roundData.transferInfo.type === 'Elimination') {
+                transferDetails = `(Vote transferred from ${roundData.transferInfo.from} to ${roundData.transferInfo.to})`;
+            }
+        }
+
+        stvDisplay.innerHTML += `
+            <div class="card voter-journey-card ${impactClass}">
+                <h4>Round ${roundData.round}: ${roundData.action} ${roundData.candidateAffected || ''}</h4>
+                <p><strong>Round Outcome:</strong> ${roundData.roundOutcome || 'None'}</p>
+                <p>Your vote is with: ${roundData.currentVoteFor}</p>
+                <p>Current vote weight: ${roundData.currentWeight.toFixed(2)}</p>
+                ${transferDetails ? `<p>${transferDetails}</p>` : ''}
+            </div>
+        `;
+    });
 }
 
 
