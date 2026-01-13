@@ -67,6 +67,7 @@ u<!DOCTYPE html>
         table.results { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
         table.results th { text-align: left; color: #888; padding: 8px; border-bottom: 1px solid #eee; }
         table.results td { padding: 8px; border-bottom: 1px solid #eee; }
+        tr.cut-line td { border-bottom: 2px dashed #999 !important; }
         tr.bubble { background-color: #fff9c4; font-weight: bold; }
         tr.cut { opacity: 0.6; }
 
@@ -168,8 +169,7 @@ u<!DOCTYPE html>
         <div class="tab" onclick="switchTab('tab-inspector')">2. Voter Inspector</div>
         <div class="tab" onclick="switchTab('tab-results')">3. Single Result</div>
         <div class="tab" onclick="switchTab('tab-voter-journey')">4. Voter Journey</div>
-        <div class="tab" onclick="switchTab('tab-logs')">5. Single Calc Logs</div>
-        <div class="tab" onclick="switchTab('tab-monte')">6. Monte Carlo Analysis</div>
+        <div class="tab" onclick="switchTab('tab-monte')">5. Monte Carlo Analysis</div>
     </div>
 
 
@@ -252,24 +252,23 @@ u<!DOCTYPE html>
             </div>
         </div>
         
-        <div class="card">
-            <h2>🔮 Bubble Watch Analysis (Single Sim)</h2>
-            <div style="display:flex; justify-content:space-between; margin-bottom:20px;">
-                <div style="width:48%; background:#fcfcfc; padding:15px; border:1px solid #eee;">
-                    <strong>9th Place (Safe)</strong>
-                    <div id="bubble-9" style="font-size:1.4rem; color:var(--accent); font-weight:bold; margin-top:5px;">-</div>
-                </div>
-                <div style="width:48%; background:#fff3e0; padding:15px; border:1px solid #ffd591;">
-                    <strong>10th Place (The Danger Zone)</strong>
-                    <div id="bubble-10" style="font-size:1.4rem; color:#d35400; font-weight:bold; margin-top:5px;">-</div>
-                    <div id="bubble-margin" style="font-size:0.9rem; margin-top:5px;">Margin over cut: -</div>
-                </div>
-            </div>
-        </div>
-
         <div class="card" style="margin-top:20px;">
             <h3>System Discrepancies (Single Sim)</h3>
             <div id="comp-output"></div>
+        </div>
+
+        <div style="margin-top:30px; border-top:1px solid #ddd; padding-top:20px;">
+            <h3 style="color:#666;">Calculation Logs</h3>
+            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:20px; height:500px;">
+                <div style="display:flex; flex-direction:column;">
+                    <h4 style="margin:0 0 5px 0; color:var(--rrv-color);">RRV Log</h4>
+                    <textarea id="log-rrv" style="flex-grow:1; width:100%; font-family:monospace; padding:10px; border:1px solid #ddd; white-space: pre; overflow-x: auto; font-size:0.8rem;"></textarea>
+                </div>
+                <div style="display:flex; flex-direction:column;">
+                    <h4 style="margin:0 0 5px 0; color:var(--stv-color);">STV Log</h4>
+                    <textarea id="log-stv" style="flex-grow:1; width:100%; font-family:monospace; padding:10px; border:1px solid #ddd; white-space: pre; overflow-x: auto; font-size:0.8rem;"></textarea>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -299,18 +298,7 @@ u<!DOCTYPE html>
         <div id="inspector-container"></div>
     </div>
 
-    <div id="tab-logs" class="tab-content">
-        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:20px; height:100%;">
-            <div style="display:flex; flex-direction:column;">
-                <h3>RRV Log</h3>
-                <textarea id="log-rrv" style="flex-grow:1; width:100%; font-family:monospace; padding:10px; border:1px solid #ddd; white-space: pre; overflow-x: auto;"></textarea>
-            </div>
-            <div style="display:flex; flex-direction:column;">
-                <h3>STV Log</h3>
-                <textarea id="log-stv" style="flex-grow:1; width:100%; font-family:monospace; padding:10px; border:1px solid #ddd; white-space: pre; overflow-x: auto;"></textarea>
-            </div>
-        </div>
-    </div>
+
 </div>
 
 <script>
@@ -657,6 +645,7 @@ function runSTV(votes, simSeed, doLog = false, filmCandidates = FILMS, seatsToFi
     // NOTE: Code inside 'if (doLog)' blocks is for visualization/logging only 
     // and does not affect the core election algorithm or results.
     let elected = [];
+    let eliminatedStack = []; // Track elimination order
     let log = [];
     const SEATS = seatsToFill;
     const voterIdsToTrack = ['vfx_1', 'gen_1']; // Voters to follow
@@ -705,6 +694,8 @@ function runSTV(votes, simSeed, doLog = false, filmCandidates = FILMS, seatsToFi
     let candidates = [...filmCandidates].sort(() => seededRand() - 0.5);
 
     let round = 1;
+    let finalTallies = {}; // To sort remaining candidates at the end
+
     while(elected.length < SEATS && candidates.length > 0) {
         let tally = {};
         candidates.forEach(c => tally[c] = 0);
@@ -712,6 +703,7 @@ function runSTV(votes, simSeed, doLog = false, filmCandidates = FILMS, seatsToFi
             let top = b.choices.find(c => candidates.includes(c));
             if(top) tally[top] += b.weight;
         });
+        finalTallies = tally; // Update for end-state reference
 
         if(doLog) {
             log.push(`\n--- ROUND ${round} (Candidates: ${candidates.length}) ---`);
@@ -801,6 +793,7 @@ function runSTV(votes, simSeed, doLog = false, filmCandidates = FILMS, seatsToFi
         } else {
             let loser = sortedTally[sortedTally.length - 1][0];
             let loserVotes = sortedTally[sortedTally.length - 1][1];
+            eliminatedStack.push({ film: loser, round: round, votes: loserVotes }); // Track elimination
             candidates = candidates.filter(c => c !== loser);
             if(doLog) {
                 log.push(`ELIMINATED: ${loser} (${loserVotes.toFixed(2)} votes)`);
@@ -856,6 +849,7 @@ function runSTV(votes, simSeed, doLog = false, filmCandidates = FILMS, seatsToFi
                     });
                 }
             });
+            candidates = []; // Cleared as they are now elected
             break;
         }
         if(round > 100) {
@@ -863,7 +857,20 @@ function runSTV(votes, simSeed, doLog = false, filmCandidates = FILMS, seatsToFi
             break;
         }
     }
-    return { elected, log }; // No longer returning ballots
+    
+    // Construct full ranking list
+    let fullRanking = [...elected]; // 1. Elected Candidates
+    
+    // 2. Remaining Candidates (if any, sorted by last tally)
+    let remaining = candidates.map(c => ({ film: c, round: 'Cut', votes: finalTallies[c] || 0 }));
+    remaining.sort((a,b) => b.votes - a.votes);
+    fullRanking.push(...remaining);
+
+    // 3. Eliminated Candidates (Reverse order of elimination = better rank)
+    let reversedEliminated = [...eliminatedStack].reverse().map(e => ({ film: e.film, round: 'Cut (R' + e.round + ')' }));
+    fullRanking.push(...reversedEliminated);
+
+    return { elected, fullRanking, log }; // Return votes array with journey data
 }
 
 
@@ -874,33 +881,16 @@ function runSingleSimulation() {
     let mainSeed = parseInt(document.getElementById('seed-input').value);
     let votes = generateVotes(mainSeed);
     
-    // RRV (Logging Enabled)
-    let rrvRes = runRRV(votes, true, FILMS, 10);
+    // 1. Run RRV Simulation (Rank all 20 for full list)
+    let rrvRes = runRRV(votes, true, FILMS, 20);
     let rrvWinners = rrvRes.winners;
-    
-    // Output RRV Log
     document.getElementById('log-rrv').value = rrvTestLog + rrvRes.log.join('\n');
 
-    const rrvBody = document.querySelector('#rrv-table tbody');
-    rrvBody.innerHTML = '';
-    rrvWinners.forEach(w => {
-        let tr = document.createElement('tr');
-        if(w.rank >= 9) tr.classList.add('bubble');
-        tr.innerHTML = `<td>${w.rank}</td><td>${w.film}</td><td>${w.score.toFixed(2)}</td>`;
-        rrvBody.appendChild(tr);
-    });
-    
-    // Bubble Analysis
-    let w9 = rrvWinners[8];
-    let w10 = rrvWinners[9];
-    document.getElementById('bubble-9').innerText = w9.film;
-    document.getElementById('bubble-10').innerText = w10.film;
-    document.getElementById('bubble-margin').innerText = `Margin: ${w10.margin.toFixed(2)} pts`;
-    
-    // STV (Logging Enabled)
+    // 2. Run STV Simulation (Elect 10, but returns full 20 ranking)
     let stvRes = runSTV(votes, mainSeed, true, FILMS, 10);
-    
-    // Aggregate journey data for all voters
+    document.getElementById('log-stv').value = stvTestLog + stvRes.log.join('\n');
+
+    // 3. Aggregate Journey Data
     voterJourneys = {};
     votes.forEach(v => {
         voterJourneys[v.id] = {
@@ -908,40 +898,64 @@ function runSingleSimulation() {
             stv: v.stvJourney
         };
     });
-    
-    // Output STV Log
-    document.getElementById('log-stv').value = stvTestLog + stvRes.log.join('\n');
 
+    // 4. Calculate Top 10 Sets for Comparison & Marking
+    const rrvTop10 = new Set(rrvWinners.slice(0,10).map(w => w.film));
+    const stvTop10 = new Set(stvRes.fullRanking.slice(0,10).map(w => w.film));
+
+    // 5. Render RRV Table
+    const rrvBody = document.querySelector('#rrv-table tbody');
+    rrvBody.innerHTML = '';
+    rrvWinners.forEach((w, i) => {
+        let tr = document.createElement('tr');
+        if (i === 9) tr.className = "cut-line";
+        if (i >= 10) tr.style.opacity = "0.5";
+        
+        let uniqueMark = (i < 10 && !stvTop10.has(w.film)) ? '<span title="Unique to RRV" style="cursor:help;">🔹</span> ' : '';
+        
+        tr.innerHTML = `<td>${i+1}</td><td>${uniqueMark}${w.film}</td><td>${w.score.toFixed(2)}</td>`;
+        rrvBody.appendChild(tr);
+    });
+    
+    // 6. Render STV Table
     const stvBody = document.querySelector('#stv-table tbody');
     stvBody.innerHTML = '';
-    stvRes.elected.forEach((w, i) => {
+    stvRes.fullRanking.forEach((w, i) => {
         let tr = document.createElement('tr');
-        tr.innerHTML = `<td>${i+1}</td><td>${w.film}</td><td>${w.round}</td>`;
+        if (i === 9) tr.className = "cut-line";
+        if (i >= 10) tr.style.opacity = "0.5";
+
+        let uniqueMark = (i < 10 && !rrvTop10.has(w.film)) ? '<span title="Unique to STV" style="cursor:help;">🔸</span> ' : '';
+
+        tr.innerHTML = `<td>${i+1}</td><td>${uniqueMark}${w.film}</td><td>${w.round}</td>`;
         stvBody.appendChild(tr);
     });
 
     renderInspector(votes); // Pass the original votes array
 
     // System Comparison
-    let rrvSet = new Set(rrvWinners.map(w => w.film));
-    let stvSet = new Set(stvRes.elected.map(w => w.film));
-    let onlyRRV = [...rrvSet].filter(x => !stvSet.has(x));
-    let onlySTV = [...stvSet].filter(x => !rrvSet.has(x));
+    let onlyRRV = [...rrvTop10].filter(x => !stvTop10.has(x));
+    let onlySTV = [...stvTop10].filter(x => !rrvTop10.has(x));
     
     let html = '';
     if(onlyRRV.length === 0) {
-        html = '<div style="color:green; font-weight:bold; padding:10px;">Perfect Match: Both systems selected the exact same 10 films.</div>';
+        html = '<div style="color:green; font-weight:bold; padding:10px; grid-column: 1 / -1; text-align:center;">Perfect Match: Both systems selected the exact same 10 films.</div>';
     } else {
-        html += `<div style="margin-bottom:15px; padding:10px; background:#e8f5e9; border:1px solid #c8e6c9; border-radius:4px;">
-                    <strong style="color:var(--rrv-color)">Only in Range Reweighted (Consensus):</strong><br>
-                    <span style="font-size:0.9rem">${onlyRRV.join(', ')}</span>
+        html += `<div style="padding:15px; background:#e8f5e9; border:1px solid #c8e6c9; border-radius:4px;">
+                    <strong style="color:var(--rrv-color); display:block; margin-bottom:5px;">🔹 Only in Range (Consensus):</strong>
+                    <ul style="margin:0; padding-left:20px; font-size:0.9rem;">${onlyRRV.map(f => `<li>${f}</li>`).join('')}</ul>
                  </div>`;
-        html += `<div style="padding:10px; background:#e3f2fd; border:1px solid #bbdefb; border-radius:4px;">
-                    <strong style="color:var(--stv-color)">Only in Preferential (Passion):</strong><br>
-                    <span style="font-size:0.9rem">${onlySTV.join(', ')}</span>
+        html += `<div style="padding:15px; background:#e3f2fd; border:1px solid #bbdefb; border-radius:4px;">
+                    <strong style="color:var(--stv-color); display:block; margin-bottom:5px;">🔸 Only in STV (Passion):</strong>
+                    <ul style="margin:0; padding-left:20px; font-size:0.9rem;">${onlySTV.map(f => `<li>${f}</li>`).join('')}</ul>
                  </div>`;
     }
-    document.getElementById('comp-output').innerHTML = html;
+    
+    const compDiv = document.getElementById('comp-output');
+    compDiv.style.display = "grid";
+    compDiv.style.gridTemplateColumns = "1fr 1fr";
+    compDiv.style.gap = "20px";
+    compDiv.innerHTML = html;
     
     // Populate voter select dropdown and render first voter's journey
     populateVoterSelect();
@@ -1061,7 +1075,10 @@ function renderInspector(votes) {
         if(rankedList.length > 5) rankHTML += `<div style="color:#888; font-size:0.8rem;">...and ${rankedList.length-5} more</div>`;
 
         div.innerHTML = `
-            <div class="voter-header"><span>${v.id} (${v.groupName})</span></div>
+            <div class="voter-header">
+                <span>${v.id} (${v.groupName})</span>
+                <span onclick="inspectVoterJourney('${v.id}')" style="font-size:0.8rem; color:var(--stv-color); cursor:pointer; text-decoration:underline;">See Journey ➡️</span>
+            </div>
             <div class="voter-data">
                 <div>${scoresHTML}</div>
                 <div>${rankHTML}</div>
@@ -1086,6 +1103,13 @@ function renderInspector(votes) {
 }
 
 // --- VOTER JOURNEY FUNCTIONS ---
+function inspectVoterJourney(voterId) {
+    switchTab('tab-voter-journey');
+    const select = document.getElementById('voter-select');
+    select.value = voterId;
+    renderVoterJourney(voterId);
+}
+
 function prevVoter() {
     const select = document.getElementById('voter-select');
     if (select.selectedIndex > 0) {
