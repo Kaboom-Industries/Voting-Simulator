@@ -483,6 +483,8 @@ function generateVotes(simSeed) {
 // --- ALGORITHMS ---
 
 function runRRV(votes, doLog = false, filmCandidates = FILMS, seatsToFill = 10) {
+    // NOTE: Code inside 'if (doLog)' blocks is for visualization/logging only 
+    // and does not affect the core election algorithm or results.
     let winners = [];
     let log = [];
     let weights = votes.map(() => 1.0);
@@ -585,6 +587,8 @@ function runRRV(votes, doLog = false, filmCandidates = FILMS, seatsToFill = 10) 
 }
 
 function runSTV(votes, simSeed, doLog = false, filmCandidates = FILMS, seatsToFill = 10) {
+    // NOTE: Code inside 'if (doLog)' blocks is for visualization/logging only 
+    // and does not affect the core election algorithm or results.
     let elected = [];
     let log = [];
     const SEATS = seatsToFill;
@@ -1220,117 +1224,119 @@ function loadConfig(input) {
 }
 
 
-</script>
 
-<script id="unit-tests">
-    function runUnitTests() {
-        console.log("--- Running Unit Tests ---");
+// --- UNIT TESTS ---
+function runUnitTests() {
+    console.log("--- Running Unit Tests ---");
 
-        // Utility for comparing floats
-        function assertFloatEqual(actual, expected, tolerance = 0.01, message = "") {
-            const pass = Math.abs(actual - expected) < tolerance;
-            if (!pass) {
-                console.error(`❌ Assertion Failed: ${message}. Expected ~${expected} (within +/- ${tolerance}), but got ${actual}.`);
-            }
-            return pass;
+    // Utility for comparing floats
+    function assertFloatEqual(actual, expected, tolerance = 0.01, message = "") {
+        const pass = Math.abs(actual - expected) < tolerance;
+        if (!pass) {
+            console.error(`❌ Assertion Failed: ${message}. Expected ~${expected} (within +/- ${tolerance}), but got ${actual}.`);
         }
-
-        function test_STV_WIGM_Example() {
-            const testName = "STV_WIGM_Example";
-            const logLines = [`--- Unit Test: ${testName} ---`];
-            // Test data sourced from Google Web Search for "STV election example step by step weighted inclusive gregory method"
-            // Simulates a 4-candidate, 2-seat election.
-            console.log(`▶️ Starting test: ${testName}...`);
-            try {
-                const testCandidates = ["Alice", "Bob", "Carol", "David"];
-                const testSeats = 2;
-                const testSeed = 1;
-
-                let mockVotes = [];
-                for(let i=0; i<35; i++) mockVotes.push({ id: `vA_${i}`, scores: {"Alice": 10, "Carol": 9, "Bob": 8, "David": 0} });
-                for(let i=0; i<30; i++) mockVotes.push({ id: `vB_${i}`, scores: {"Bob": 10, "David": 9, "Alice": 8, "Carol": 0} });
-                for(let i=0; i<20; i++) mockVotes.push({ id: `vC_${i}`, scores: {"Carol": 10, "Alice": 9, "David": 8, "Bob": 0} });
-                for(let i=0; i<15; i++) mockVotes.push({ id: `vD_${i}`, scores: {"David": 10, "Bob": 9, "Carol": 8, "Alice": 0} });
-
-                const { elected } = runSTV(mockVotes, testSeed, false, testCandidates, testSeats);
-                const winners = elected.map(e => e.film);
-                
-                const pass = winners.length === 2 && winners.includes("Alice") && winners.includes("Bob");
-
-                if (pass) {
-                    console.log(`✅ Test Passed: ${testName}`);
-                    logLines.push(`✅ Algorithm Verification PASSED.`);
-                } else {
-                    console.error(`❌ Test Failed: ${testName}.`);
-                    logLines.push(`❌ Algorithm Verification FAILED.`);
-                    console.assert(winners.length === 2, `Expected 2 winners, but got ${winners.length}. Winners: ${winners.join(', ')}`);
-                    console.assert(winners.includes("Alice"), `Expected "Alice" to be a winner. Winners: ${winners.join(', ')}`);
-                    console.assert(winners.includes("Bob"), `Expected "Bob" to be a winner. Winners: ${winners.join(', ')}`);
-                }
-            } catch (e) {
-                console.error(`❌ Test Failed with an exception: ${testName}`, e);
-                logLines.push(`❌ Algorithm Verification FAILED with exception.`);
-            }
-            stvTestLog = logLines.join('\n') + '\n\n' + '-------------------------------------\n\n';
-        }
-
-        function test_RRV_Example() {
-            const testName = "RRV_Example";
-            const logLines = [`--- Unit Test: ${testName} ---`];
-            // Test data sourced from Google Web Search for "range reweighted voting example step by step"
-            // Simulates a 3-candidate, 2-seat election with 3 voter blocs.
-            console.log(`▶️ Starting test: ${testName}...`);
-            try {
-                const testCandidates = ["Alice", "Bob", "Carol"];
-                const testSeats = 2;
-
-                let mockVotes = [];
-                for(let i=0; i<60; i++) mockVotes.push({ id: `vA_${i}`, scores: {"Alice": 10, "Bob": 2, "Carol": 1} });
-                for(let i=0; i<40; i++) mockVotes.push({ id: `vB_${i}`, scores: {"Alice": 1, "Bob": 10, "Carol": 3} });
-                for(let i=0; i<20; i++) mockVotes.push({ id: `vC_${i}`, scores: {"Alice": 3, "Bob": 4, "Carol": 10} });
-
-                const { winners } = runRRV(mockVotes, false, testCandidates, testSeats);
-
-                let pass = true;
-                if (winners.length !== 2) {
-                    console.error(`❌ Assertion Failed: Expected 2 winners, but got ${winners.length}`);
-                    pass = false;
-                }
-                if (winners[0]?.film !== "Alice") {
-                    console.error(`❌ Assertion Failed: Expected winner 1 to be Alice, but got ${winners[0]?.film}`);
-                    pass = false;
-                }
-                if (!assertFloatEqual(winners[0]?.score, 700, 0.01, "Round 1 winner score")) pass = false;
-                
-                if (winners[1]?.film !== "Bob") {
-                    console.error(`❌ Assertion Failed: Expected winner 2 to be Bob, but got ${winners[1]?.film}`);
-                    pass = false;
-                }
-                if (!assertFloatEqual(winners[1]?.score, 485.12, 0.1, "Round 2 winner score")) pass = false;
-
-                if (pass) {
-                    console.log(`✅ Test Passed: ${testName}`);
-                    logLines.push(`✅ Algorithm Verification PASSED.`);
-                } else {
-                    console.error(`❌ Test Failed: ${testName}. See assertion errors above.`);
-                    logLines.push(`❌ Algorithm Verification FAILED.`);
-                }
-            } catch (e) {
-                console.error(`❌ Test Failed with an exception: ${testName}`, e);
-                logLines.push(`❌ Algorithm Verification FAILED with exception.`);
-            }
-            rrvTestLog = logLines.join('\n') + '\n\n' + '-------------------------------------\n\n';
-        }
-
-        // --- Run all tests ---
-        test_STV_WIGM_Example();
-        test_RRV_Example();
-        console.log("--- Unit Tests Complete ---");
+        return pass;
     }
 
-    // Run tests, then initialize the app to ensure everything is defined
+    function test_STV_WIGM_Example() {
+        const testName = "STV_WIGM_Example";
+        const logLines = [`--- Unit Test: ${testName} ---`];
+        // Test data sourced from Google Web Search for "STV election example step by step weighted inclusive gregory method"
+        // Simulates a 4-candidate, 2-seat election.
+        console.log(`▶️ Starting test: ${testName}...`);
+        try {
+            const testCandidates = ["Alice", "Bob", "Carol", "David"];
+            const testSeats = 2;
+            const testSeed = 1;
+
+            let mockVotes = [];
+            for(let i=0; i<35; i++) mockVotes.push({ id: `vA_${i}`, scores: {"Alice": 10, "Carol": 9, "Bob": 8, "David": 0} });
+            for(let i=0; i<30; i++) mockVotes.push({ id: `vB_${i}`, scores: {"Bob": 10, "David": 9, "Alice": 8, "Carol": 0} });
+            for(let i=0; i<20; i++) mockVotes.push({ id: `vC_${i}`, scores: {"Carol": 10, "Alice": 9, "David": 8, "Bob": 0} });
+            for(let i=0; i<15; i++) mockVotes.push({ id: `vD_${i}`, scores: {"David": 10, "Bob": 9, "Carol": 8, "Alice": 0} });
+
+            const { elected } = runSTV(mockVotes, testSeed, false, testCandidates, testSeats);
+            const winners = elected.map(e => e.film);
+            
+            const pass = winners.length === 2 && winners.includes("Alice") && winners.includes("Bob");
+
+            if (pass) {
+                console.log(`✅ Test Passed: ${testName}`);
+                logLines.push(`✅ Algorithm Verification PASSED.`);
+            } else {
+                console.error(`❌ Test Failed: ${testName}.`);
+                logLines.push(`❌ Algorithm Verification FAILED.`);
+                console.assert(winners.length === 2, `Expected 2 winners, but got ${winners.length}. Winners: ${winners.join(', ')}`);
+                console.assert(winners.includes("Alice"), `Expected "Alice" to be a winner. Winners: ${winners.join(', ')}`);
+                console.assert(winners.includes("Bob"), `Expected "Bob" to be a winner. Winners: ${winners.join(', ')}`);
+            }
+        } catch (e) {
+            console.error(`❌ Test Failed with an exception: ${testName}`, e);
+            logLines.push(`❌ Algorithm Verification FAILED with exception.`);
+        }
+        stvTestLog = logLines.join('\n') + '\n\n' + '-------------------------------------\n\n';
+    }
+
+    function test_RRV_Example() {
+        const testName = "RRV_Example";
+        const logLines = [`--- Unit Test: ${testName} ---`];
+        // Test data sourced from Google Web Search for "range reweighted voting example step by step"
+        // Simulates a 3-candidate, 2-seat election with 3 voter blocs.
+        console.log(`▶️ Starting test: ${testName}...`);
+        try {
+            const testCandidates = ["Alice", "Bob", "Carol"];
+            const testSeats = 2;
+
+            let mockVotes = [];
+            for(let i=0; i<60; i++) mockVotes.push({ id: `vA_${i}`, scores: {"Alice": 10, "Bob": 2, "Carol": 1} });
+            for(let i=0; i<40; i++) mockVotes.push({ id: `vB_${i}`, scores: {"Alice": 1, "Bob": 10, "Carol": 3} });
+            for(let i=0; i<20; i++) mockVotes.push({ id: `vC_${i}`, scores: {"Alice": 3, "Bob": 4, "Carol": 10} });
+
+            const { winners } = runRRV(mockVotes, false, testCandidates, testSeats);
+
+            let pass = true;
+            if (winners.length !== 2) {
+                console.error(`❌ Assertion Failed: Expected 2 winners, but got ${winners.length}`);
+                pass = false;
+            }
+            if (winners[0]?.film !== "Alice") {
+                console.error(`❌ Assertion Failed: Expected winner 1 to be Alice, but got ${winners[0]?.film}`);
+                pass = false;
+            }
+            if (!assertFloatEqual(winners[0]?.score, 700, 0.01, "Round 1 winner score")) pass = false;
+            
+            if (winners[1]?.film !== "Bob") {
+                console.error(`❌ Assertion Failed: Expected winner 2 to be Bob, but got ${winners[1]?.film}`);
+                pass = false;
+            }
+            if (!assertFloatEqual(winners[1]?.score, 485.12, 0.1, "Round 2 winner score")) pass = false;
+
+            if (pass) {
+                console.log(`✅ Test Passed: ${testName}`);
+                logLines.push(`✅ Algorithm Verification PASSED.`);
+            } else {
+                console.error(`❌ Test Failed: ${testName}. See assertion errors above.`);
+                logLines.push(`❌ Algorithm Verification FAILED.`);
+            }
+        } catch (e) {
+            console.error(`❌ Test Failed with an exception: ${testName}`, e);
+            logLines.push(`❌ Algorithm Verification FAILED with exception.`);
+        }
+        rrvTestLog = logLines.join('\n') + '\n\n' + '-------------------------------------\n\n';
+    }
+
+    // --- Run all tests ---
+    test_STV_WIGM_Example();
+    test_RRV_Example();
+    console.log("--- Unit Tests Complete ---");
+}
+
+// --- INITIALIZATION ---
+window.onload = function() {
     runUnitTests();
     init();
+};
+
 </script>
 
 </body>
