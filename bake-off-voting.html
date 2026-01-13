@@ -435,6 +435,13 @@ function runRRV(votes, doLog = false) {
     let weights = votes.map(() => 1.0);
     let candidates = [...FILMS];
     const MAX_SEATS = 10;
+    const voterIdsToTrack = ['vfx_1', 'gen_1']; // Voters to follow
+    const trackedVoterIndices = votes.map((v,i) => voterIdsToTrack.includes(v.id) ? i : -1).filter(i => i !== -1);
+
+    if(doLog) {
+        log.push(`--- RRV Simulation ---`);
+        log.push(`Tracking voters: ${voterIdsToTrack.join(', ')}`);
+    }
     
     for(let round=1; round<=MAX_SEATS; round++) {
         let scores = {};
@@ -444,31 +451,48 @@ function runRRV(votes, doLog = false) {
             votes.forEach((v, i) => { scores[film] += v.scores[film] * weights[i]; });
         });
         
-        // Sort by Score
         let sorted = Object.entries(scores).sort((a,b) => b[1] - a[1]);
         let winner = sorted[0][0];
         let score = sorted[0][1];
-        let runnerUp = sorted[1] ? sorted[1][1] : 0;
-        let margin = score - runnerUp;
-
-        winners.push({ rank: round, film: winner, score: score, margin: margin });
+        
+        winners.push({ rank: round, film: winner, score: score, margin: score - (sorted[1] ? sorted[1][1] : 0) });
         
         if(doLog) {
-            log.push(`ROUND ${round}: ${winner} (Score: ${score.toFixed(2)}). Margin: ${margin.toFixed(2)} over ${sorted[1] ? sorted[1][0] : 'None'}`);
+            log.push(`\n--- ROUND ${round}: ${winner} wins with ${score.toFixed(2)} points ---`);
+            
+            trackedVoterIndices.forEach(i => {
+                const v = votes[i];
+                const voterScoreForWinner = v.scores[winner] || 0;
+                const effectiveVote = voterScoreForWinner * weights[i];
+                log.push(`  - Voter ${v.id}:`);
+                log.push(`    - Current Weight: ${weights[i].toFixed(3)}`);
+                log.push(`    - Score for ${winner}: ${voterScoreForWinner}/10`);
+                log.push(`    - Effective contribution: ${effectiveVote.toFixed(2)} points`);
+            });
         }
 
         // Reweight
+        let newWeights = [...weights];
         votes.forEach((v, i) => {
             let satisfaction = 0;
             winners.forEach(w => satisfaction += v.scores[w.film]);
-            let oldW = weights[i];
-            weights[i] = 1.0 / (1.0 + (satisfaction / 10.0));
-            
-            // Log first voter only for debugging
-            if(doLog && i === 0 && round === 1) {
-                log.push(`  [Debug Voter 1] Old Weight: ${oldW.toFixed(2)} -> New Weight: ${weights[i].toFixed(2)} (Sat: ${satisfaction})`);
-            }
+            newWeights[i] = 1.0 / (1.0 + (satisfaction / 10.0));
         });
+
+        if(doLog) {
+             log.push(`\n  (Reweighting for next round)`);
+             trackedVoterIndices.forEach(i => {
+                const v = votes[i];
+                let satisfaction = 0;
+                winners.forEach(w => satisfaction += v.scores[w.film]);
+                log.push(`  - Voter ${v.id}:`);
+                log.push(`    - Films won they like: ${winners.map(w => w.film).join(', ')}`);
+                log.push(`    - Total Satisfaction: ${satisfaction}`);
+                log.push(`    - Old Weight: ${weights[i].toFixed(3)} -> New Weight: ${newWeights[i].toFixed(3)}`);
+            });
+        }
+        weights = newWeights;
+        
         candidates = candidates.filter(c => c !== winner);
     }
     return { winners, log };
@@ -478,7 +502,13 @@ function runSTV(votes, simSeed, doLog = false) {
     let elected = [];
     let log = [];
     const SEATS = 10;
+    const voterIdsToTrack = ['vfx_1', 'gen_1']; // Voters to follow
     
+    if(doLog) {
+        log.push(`--- STV Simulation ---`);
+        log.push(`Tracking voters: ${voterIdsToTrack.join(', ')}`);
+    }
+
     // 1. Convert to Ranked Ballots
     let ballots = votes.map((v, idx) => {
         let valid = Object.entries(v.scores).filter(e => e[1] > 0);
@@ -488,11 +518,19 @@ function runSTV(votes, simSeed, doLog = false) {
             localSeed = (localSeed * 16807) % 2147483647;
             return (localSeed % 2 === 0) ? 1 : -1;
         });
-        return { choices: valid.map(e => e[0]), weight: 1.0 };
+        return { voterId: v.id, choices: valid.map(e => e[0]), weight: 1.0 };
     });
     
+    const trackedVoterIndices = ballots.map((b,i) => voterIdsToTrack.includes(b.voterId) ? i : -1).filter(i => i !== -1);
+    
     let quota = Math.floor(ballots.length / (SEATS + 1)) + 1;
-    if(doLog) log.push(`Quota calculated: ${quota}`);
+    if(doLog) {
+        log.push(`Quota calculated: ${quota} (from ${ballots.length} voters)`);
+        trackedVoterIndices.forEach(i => {
+            const ballot = ballots[i];
+            log.push(`  - Voter ${ballot.voterId} initial ballot: ${ballot.choices.slice(0,5).join(' > ')}...`);
+        });
+    }
 
     // Tie-break shuffle
     let shuffleSeed = simSeed + 9999;
@@ -501,7 +539,7 @@ function runSTV(votes, simSeed, doLog = false) {
 
     let round = 1;
     while(elected.length < SEATS && candidates.length > 0) {
-        if(doLog) log.push(`\n--- ROUND ${round} ---`);
+        if(doLog) log.push(`\n--- ROUND ${round} (Candidates: ${candidates.length}) ---`);
         
         let tally = {};
         candidates.forEach(c => tally[c] = 0);
@@ -510,6 +548,14 @@ function runSTV(votes, simSeed, doLog = false) {
             if(top) tally[top] += b.weight;
         });
         
+        if(doLog) {
+            trackedVoterIndices.forEach(i => {
+                const b = ballots[i];
+                const topChoice = b.choices.find(c => candidates.includes(c));
+                log.push(`  - Voter ${b.voterId} (Weight: ${b.weight.toFixed(3)}) is voting for: ${topChoice || 'exhausted'}`);
+            });
+        }
+
         let sortedTally = Object.entries(tally).sort((a,b) => {
             if(b[1] !== a[1]) return b[1] - a[1];
             return seededRand() - 0.5; 
@@ -521,36 +567,62 @@ function runSTV(votes, simSeed, doLog = false) {
         
         if(roundWinners.length > 0) {
             let winner = roundWinners[0][0];
+            let winnerVotes = roundWinners[0][1];
             elected.push({ film: winner, round: round });
             candidates = candidates.filter(c => c !== winner);
             
-            if(doLog) log.push(`ELECTED: ${winner}`);
+            if(doLog) log.push(`ELECTED: ${winner} with ${winnerVotes.toFixed(2)} votes.`);
 
-            let surplus = roundWinners[0][1] - quota;
-            let ratio = surplus / roundWinners[0][1];
+            let surplus = winnerVotes - quota;
             if(surplus > 0) {
-                if(doLog) log.push(`  Surplus: ${surplus.toFixed(2)}. Transfer Ratio: ${ratio.toFixed(4)}`);
-                ballots.forEach(b => {
+                let ratio = surplus / winnerVotes;
+                if(doLog) log.push(`  Surplus of ${surplus.toFixed(2)} to be transferred at ratio ${ratio.toFixed(4)}.`);
+                
+                ballots.forEach((b, i) => {
                     let top = b.choices.find(c => c === winner || candidates.includes(c));
-                    if(top === winner) b.weight *= ratio;
+                    if(top === winner) {
+                        const oldWeight = b.weight;
+                        b.weight *= ratio;
+                        if(doLog && trackedVoterIndices.includes(i)) {
+                            log.push(`  - Voter ${b.voterId}'s vote contributed. Weight reduced from ${oldWeight.toFixed(3)} to ${b.weight.toFixed(3)}.`);
+                        }
+                    }
                 });
+            } else {
+                 if(doLog) log.push(`  No surplus to transfer.`);
             }
         } else {
             let loser = sortedTally[sortedTally.length - 1][0];
             let loserVotes = sortedTally[sortedTally.length - 1][1];
             candidates = candidates.filter(c => c !== loser);
-            if(doLog) log.push(`ELIMINATED: ${loser} (${loserVotes.toFixed(2)} votes)`);
+            if(doLog) {
+                log.push(`ELIMINATED: ${loser} (${loserVotes.toFixed(2)} votes)`);
+                
+                ballots.forEach((b, i) => {
+                    if (trackedVoterIndices.includes(i)) {
+                        const topChoice = b.choices.find(c => candidates.includes(c) || c === loser);
+                        if (topChoice === loser) {
+                            const nextChoice = b.choices.find(c => candidates.includes(c));
+                            log.push(`  - Voter ${b.voterId}'s vote for ${loser} is transferred to ${nextChoice || 'exhausted'}.`);
+                        }
+                    }
+                });
+            }
         }
         
         round++;
         if(candidates.length + elected.length <= SEATS) {
+            if(doLog) log.push(`\n--- FINAL STAGE ---`);
             candidates.forEach(c => {
                 elected.push({film:c, round:"Auto"});
                 if(doLog) log.push(`AUTO-ELECTED: ${c} (survived to end)`);
             });
             break;
         }
-        if(round > 100) break;
+        if(round > 100) {
+            if(doLog) log.push("ERROR: Exceeded 100 rounds.");
+            break;
+        }
     }
     return { elected, ballots, log };
 }
