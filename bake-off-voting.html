@@ -305,6 +305,8 @@ const DEFAULT_MATRIX = {
 };
 
 let currentMatrix = JSON.parse(JSON.stringify(DEFAULT_MATRIX));
+let rrvTestLog = '';
+let stvTestLog = '';
 
 // --- SEEDED RANDOM (LCG) ---
 let _seed = 1234;
@@ -325,6 +327,7 @@ function init() {
     renderMatrix();
     runSingleSimulation();
 }
+
 
 function renderSliders() {
     const c = document.getElementById('sliders-container');
@@ -429,18 +432,20 @@ function generateVotes(simSeed) {
 
 // --- ALGORITHMS ---
 
-function runRRV(votes, doLog = false) {
+function runRRV(votes, doLog = false, filmCandidates = FILMS, seatsToFill = 10) {
     let winners = [];
     let log = [];
     let weights = votes.map(() => 1.0);
-    let candidates = [...FILMS];
-    const MAX_SEATS = 10;
+    let candidates = [...filmCandidates];
+    const MAX_SEATS = seatsToFill;
     const voterIdsToTrack = ['vfx_1', 'gen_1']; // Voters to follow
     const trackedVoterIndices = votes.map((v,i) => voterIdsToTrack.includes(v.id) ? i : -1).filter(i => i !== -1);
 
     if(doLog) {
         log.push(`--- RRV Simulation ---`);
-        log.push(`Tracking voters: ${voterIdsToTrack.join(', ')}`);
+        if (votes.some(v => voterIdsToTrack.includes(v.id))) {
+            log.push(`Tracking voters: ${voterIdsToTrack.join(', ')}`);
+        }
     }
     
     for(let round=1; round<=MAX_SEATS; round++) {
@@ -460,15 +465,17 @@ function runRRV(votes, doLog = false) {
         if(doLog) {
             log.push(`\n--- ROUND ${round}: ${winner} wins with ${score.toFixed(2)} points ---`);
             
-            trackedVoterIndices.forEach(i => {
-                const v = votes[i];
-                const voterScoreForWinner = v.scores[winner] || 0;
-                const effectiveVote = voterScoreForWinner * weights[i];
-                log.push(`  - Voter ${v.id}:`);
-                log.push(`    - Current Weight: ${weights[i].toFixed(3)}`);
-                log.push(`    - Score for ${winner}: ${voterScoreForWinner}/10`);
-                log.push(`    - Effective contribution: ${effectiveVote.toFixed(2)} points`);
-            });
+            if (trackedVoterIndices.length > 0) {
+                trackedVoterIndices.forEach(i => {
+                    const v = votes[i];
+                    const voterScoreForWinner = v.scores[winner] || 0;
+                    const effectiveVote = voterScoreForWinner * weights[i];
+                    log.push(`  - Voter ${v.id}:`);
+                    log.push(`    - Current Weight: ${weights[i].toFixed(3)}`);
+                    log.push(`    - Score for ${winner}: ${voterScoreForWinner}/10`);
+                    log.push(`    - Effective contribution: ${effectiveVote.toFixed(2)} points`);
+                });
+            }
         }
 
         // Reweight
@@ -481,15 +488,17 @@ function runRRV(votes, doLog = false) {
 
         if(doLog) {
              log.push(`\n  (Reweighting for next round)`);
-             trackedVoterIndices.forEach(i => {
-                const v = votes[i];
-                let satisfaction = 0;
-                winners.forEach(w => satisfaction += v.scores[w.film]);
-                log.push(`  - Voter ${v.id}:`);
-                log.push(`    - Films won they like: ${winners.map(w => w.film).join(', ')}`);
-                log.push(`    - Total Satisfaction: ${satisfaction}`);
-                log.push(`    - Old Weight: ${weights[i].toFixed(3)} -> New Weight: ${newWeights[i].toFixed(3)}`);
-            });
+             if (trackedVoterIndices.length > 0) {
+                trackedVoterIndices.forEach(i => {
+                    const v = votes[i];
+                    let satisfaction = 0;
+                    winners.forEach(w => satisfaction += v.scores[w.film]);
+                    log.push(`  - Voter ${v.id}:`);
+                    log.push(`    - Films won they like: ${winners.map(w => w.film).join(', ')}`);
+                    log.push(`    - Total Satisfaction: ${satisfaction}`);
+                    log.push(`    - Old Weight: ${weights[i].toFixed(3)} -> New Weight: ${newWeights[i].toFixed(3)}`);
+                });
+            }
         }
         weights = newWeights;
         
@@ -498,15 +507,17 @@ function runRRV(votes, doLog = false) {
     return { winners, log };
 }
 
-function runSTV(votes, simSeed, doLog = false) {
+function runSTV(votes, simSeed, doLog = false, filmCandidates = FILMS, seatsToFill = 10) {
     let elected = [];
     let log = [];
-    const SEATS = 10;
+    const SEATS = seatsToFill;
     const voterIdsToTrack = ['vfx_1', 'gen_1']; // Voters to follow
     
     if(doLog) {
         log.push(`--- STV Simulation ---`);
-        log.push(`Tracking voters: ${voterIdsToTrack.join(', ')}`);
+        if (votes.some(v => voterIdsToTrack.includes(v.id))) {
+            log.push(`Tracking voters: ${voterIdsToTrack.join(', ')}`);
+        }
     }
 
     // 1. Convert to Ranked Ballots
@@ -525,17 +536,19 @@ function runSTV(votes, simSeed, doLog = false) {
     
     let quota = Math.floor(ballots.length / (SEATS + 1)) + 1;
     if(doLog) {
-        log.push(`Quota calculated: ${quota} (from ${ballots.length} voters)`);
-        trackedVoterIndices.forEach(i => {
-            const ballot = ballots[i];
-            log.push(`  - Voter ${ballot.voterId} initial ballot: ${ballot.choices.slice(0,5).join(' > ')}...`);
-        });
+        log.push(`Quota calculated: ${quota} (from ${ballots.length} voters for ${SEATS} seats)`);
+        if (trackedVoterIndices.length > 0) {
+            trackedVoterIndices.forEach(i => {
+                const ballot = ballots[i];
+                log.push(`  - Voter ${ballot.voterId} initial ballot: ${ballot.choices.slice(0,5).join(' > ')}...`);
+            });
+        }
     }
 
     // Tie-break shuffle
     let shuffleSeed = simSeed + 9999;
     const seededRand = () => { shuffleSeed = (shuffleSeed * 16807) % 2147483647; return (shuffleSeed-1)/2147483646; };
-    let candidates = [...FILMS].sort(() => seededRand() - 0.5);
+    let candidates = [...filmCandidates].sort(() => seededRand() - 0.5);
 
     let round = 1;
     while(elected.length < SEATS && candidates.length > 0) {
@@ -549,11 +562,13 @@ function runSTV(votes, simSeed, doLog = false) {
         });
         
         if(doLog) {
-            trackedVoterIndices.forEach(i => {
-                const b = ballots[i];
-                const topChoice = b.choices.find(c => candidates.includes(c));
-                log.push(`  - Voter ${b.voterId} (Weight: ${b.weight.toFixed(3)}) is voting for: ${topChoice || 'exhausted'}`);
-            });
+            if (trackedVoterIndices.length > 0) {
+                trackedVoterIndices.forEach(i => {
+                    const b = ballots[i];
+                    const topChoice = b.choices.find(c => candidates.includes(c));
+                    log.push(`  - Voter ${b.voterId} (Weight: ${b.weight.toFixed(3)}) is voting for: ${topChoice || 'exhausted'}`);
+                });
+            }
         }
 
         let sortedTally = Object.entries(tally).sort((a,b) => {
@@ -598,15 +613,17 @@ function runSTV(votes, simSeed, doLog = false) {
             if(doLog) {
                 log.push(`ELIMINATED: ${loser} (${loserVotes.toFixed(2)} votes)`);
                 
-                ballots.forEach((b, i) => {
-                    if (trackedVoterIndices.includes(i)) {
-                        const topChoice = b.choices.find(c => candidates.includes(c) || c === loser);
-                        if (topChoice === loser) {
-                            const nextChoice = b.choices.find(c => candidates.includes(c));
-                            log.push(`  - Voter ${b.voterId}'s vote for ${loser} is transferred to ${nextChoice || 'exhausted'}.`);
+                if (trackedVoterIndices.length > 0) {
+                    ballots.forEach((b, i) => {
+                        if (trackedVoterIndices.includes(i)) {
+                            const topChoice = b.choices.find(c => candidates.includes(c) || c === loser);
+                            if (topChoice === loser) {
+                                const nextChoice = b.choices.find(c => candidates.includes(c));
+                                log.push(`  - Voter ${b.voterId}'s vote for ${loser} is transferred to ${nextChoice || 'exhausted'}.`);
+                            }
                         }
-                    }
-                });
+                    });
+                }
             }
         }
         
@@ -629,7 +646,6 @@ function runSTV(votes, simSeed, doLog = false) {
 
 
 
-
 // --- EXECUTION ---
 
 function runSingleSimulation() {
@@ -637,11 +653,11 @@ function runSingleSimulation() {
     let votes = generateVotes(mainSeed);
     
     // RRV (Logging Enabled)
-    let rrvRes = runRRV(votes, true);
+    let rrvRes = runRRV(votes, true, FILMS, 10);
     let rrvWinners = rrvRes.winners;
     
     // Output RRV Log
-    document.getElementById('log-rrv').value = rrvRes.log.join('\n');
+    document.getElementById('log-rrv').value = rrvTestLog + rrvRes.log.join('\n');
 
     const rrvBody = document.querySelector('#rrv-table tbody');
     rrvBody.innerHTML = '';
@@ -660,10 +676,10 @@ function runSingleSimulation() {
     document.getElementById('bubble-margin').innerText = `Margin: ${w10.margin.toFixed(2)} pts`;
     
     // STV (Logging Enabled)
-    let stvRes = runSTV(votes, mainSeed, true);
+    let stvRes = runSTV(votes, mainSeed, true, FILMS, 10);
     
     // Output STV Log
-    document.getElementById('log-stv').value = stvRes.log.join('\n');
+    document.getElementById('log-stv').value = stvTestLog + stvRes.log.join('\n');
 
     const stvBody = document.querySelector('#stv-table tbody');
     stvBody.innerHTML = '';
@@ -714,10 +730,10 @@ function runMonteCarlo() {
             let votes = generateVotes(iterSeed);
             
             // Run without logging (false) for speed
-            let rrvW = runRRV(votes, false).winners;
+            let rrvW = runRRV(votes, false, FILMS, 10).winners;
             rrvW.forEach(w => stats[w.film].rrvWins++);
             
-            let stvW = runSTV(votes, iterSeed, false).elected;
+            let stvW = runSTV(votes, iterSeed, false, FILMS, 10).elected;
             stvW.forEach(w => stats[w.film].stvWins++);
         }
         
@@ -859,8 +875,8 @@ function saveConfig() {
 
     // 3. CLEANUP A: Collapse number arrays back to single lines
     // Finds arrays like [ \n 1, \n 2 \n ] and makes them [ 1, 2 ]
-    jsonStr = jsonStr.replace(/\[\s*([\d,\s]+?)\s*\]/g, (match) => {
-        let cleanNums = match.replace(/[\[\]\s]/g, ''); 
+    jsonStr = jsonStr.replace(/[\[\s]*([\d,\s]+?)[\s\]]*/g, (match) => {
+        let cleanNums = match.replace(/[[\]\s]/g, ''); 
         return '[' + cleanNums.split(',').join(', ') + ']';
     });
 
@@ -935,7 +951,119 @@ function loadConfig(input) {
     input.value = '';
 }
 
-init();
+
 </script>
+
+<script id="unit-tests">
+    function runUnitTests() {
+        console.log("--- Running Unit Tests ---");
+
+        // Utility for comparing floats
+        function assertFloatEqual(actual, expected, tolerance = 0.01, message = "") {
+            const pass = Math.abs(actual - expected) < tolerance;
+            if (!pass) {
+                console.error(`❌ Assertion Failed: ${message}. Expected ~${expected} (within +/- ${tolerance}), but got ${actual}.`);
+            }
+            return pass;
+        }
+
+        function test_STV_WIGM_Example() {
+            const testName = "STV_WIGM_Example";
+            const logLines = [`--- Unit Test: ${testName} ---`];
+            // Test data sourced from Google Web Search for "STV election example step by step weighted inclusive gregory method"
+            // Simulates a 4-candidate, 2-seat election.
+            console.log(`▶️ Starting test: ${testName}...`);
+            try {
+                const testCandidates = ["Alice", "Bob", "Carol", "David"];
+                const testSeats = 2;
+                const testSeed = 1;
+
+                let mockVotes = [];
+                for(let i=0; i<35; i++) mockVotes.push({ id: `vA_${i}`, scores: {"Alice": 10, "Carol": 9, "Bob": 8, "David": 0} });
+                for(let i=0; i<30; i++) mockVotes.push({ id: `vB_${i}`, scores: {"Bob": 10, "David": 9, "Alice": 8, "Carol": 0} });
+                for(let i=0; i<20; i++) mockVotes.push({ id: `vC_${i}`, scores: {"Carol": 10, "Alice": 9, "David": 8, "Bob": 0} });
+                for(let i=0; i<15; i++) mockVotes.push({ id: `vD_${i}`, scores: {"David": 10, "Bob": 9, "Carol": 8, "Alice": 0} });
+
+                const { elected } = runSTV(mockVotes, testSeed, false, testCandidates, testSeats);
+                const winners = elected.map(e => e.film);
+                
+                const pass = winners.length === 2 && winners.includes("Alice") && winners.includes("Bob");
+
+                if (pass) {
+                    console.log(`✅ Test Passed: ${testName}`);
+                    logLines.push(`✅ Algorithm Verification PASSED.`);
+                } else {
+                    console.error(`❌ Test Failed: ${testName}.`);
+                    logLines.push(`❌ Algorithm Verification FAILED.`);
+                    console.assert(winners.length === 2, `Expected 2 winners, but got ${winners.length}. Winners: ${winners.join(', ')}`);
+                    console.assert(winners.includes("Alice"), `Expected "Alice" to be a winner. Winners: ${winners.join(', ')}`);
+                    console.assert(winners.includes("Bob"), `Expected "Bob" to be a winner. Winners: ${winners.join(', ')}`);
+                }
+            } catch (e) {
+                console.error(`❌ Test Failed with an exception: ${testName}`, e);
+                logLines.push(`❌ Algorithm Verification FAILED with exception.`);
+            }
+            stvTestLog = logLines.join('\n') + '\n\n' + '-------------------------------------\n\n';
+        }
+
+        function test_RRV_Example() {
+            const testName = "RRV_Example";
+            const logLines = [`--- Unit Test: ${testName} ---`];
+            // Test data sourced from Google Web Search for "range reweighted voting example step by step"
+            // Simulates a 3-candidate, 2-seat election with 3 voter blocs.
+            console.log(`▶️ Starting test: ${testName}...`);
+            try {
+                const testCandidates = ["Alice", "Bob", "Carol"];
+                const testSeats = 2;
+
+                let mockVotes = [];
+                for(let i=0; i<60; i++) mockVotes.push({ id: `vA_${i}`, scores: {"Alice": 10, "Bob": 2, "Carol": 1} });
+                for(let i=0; i<40; i++) mockVotes.push({ id: `vB_${i}`, scores: {"Alice": 1, "Bob": 10, "Carol": 3} });
+                for(let i=0; i<20; i++) mockVotes.push({ id: `vC_${i}`, scores: {"Alice": 3, "Bob": 4, "Carol": 10} });
+
+                const { winners } = runRRV(mockVotes, false, testCandidates, testSeats);
+
+                let pass = true;
+                if (winners.length !== 2) {
+                    console.error(`❌ Assertion Failed: Expected 2 winners, but got ${winners.length}`);
+                    pass = false;
+                }
+                if (winners[0]?.film !== "Alice") {
+                    console.error(`❌ Assertion Failed: Expected winner 1 to be Alice, but got ${winners[0]?.film}`);
+                    pass = false;
+                }
+                if (!assertFloatEqual(winners[0]?.score, 700, 0.01, "Round 1 winner score")) pass = false;
+                
+                if (winners[1]?.film !== "Bob") {
+                    console.error(`❌ Assertion Failed: Expected winner 2 to be Bob, but got ${winners[1]?.film}`);
+                    pass = false;
+                }
+                if (!assertFloatEqual(winners[1]?.score, 485.12, 0.1, "Round 2 winner score")) pass = false;
+
+                if (pass) {
+                    console.log(`✅ Test Passed: ${testName}`);
+                    logLines.push(`✅ Algorithm Verification PASSED.`);
+                } else {
+                    console.error(`❌ Test Failed: ${testName}. See assertion errors above.`);
+                    logLines.push(`❌ Algorithm Verification FAILED.`);
+                }
+            } catch (e) {
+                console.error(`❌ Test Failed with an exception: ${testName}`, e);
+                logLines.push(`❌ Algorithm Verification FAILED with exception.`);
+            }
+            rrvTestLog = logLines.join('\n') + '\n\n' + '-------------------------------------\n\n';
+        }
+
+        // --- Run all tests ---
+        test_STV_WIGM_Example();
+        test_RRV_Example();
+        console.log("--- Unit Tests Complete ---");
+    }
+
+    // Run tests, then initialize the app to ensure everything is defined
+    runUnitTests();
+    init();
+</script>
+
 </body>
 </html>
