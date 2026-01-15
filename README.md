@@ -1,4 +1,4 @@
-# Academy Voting Lab V3.0
+# Academy Voting Lab
 
 **A Single-File HTML/JS Simulation Tool for Comparative Voting Analysis**
 
@@ -6,7 +6,7 @@ This application allows users to simulate and compare two distinct voting system
 
 ---
 
-## 🌟 Key Features
+## Key Features
 
 ### 1. Interactive Simulation Dashboard
 *   **Real-time Controls:** Adjust voter counts per branch (VFX, Animation, Generalist, etc.) and see results instantly.
@@ -34,7 +34,7 @@ This application allows users to simulate and compare two distinct voting system
 
 ---
 
-## 🗳️ The Algorithms
+## The Algorithms
 
 ### Range Reweighted Voting (RRV)
 *   **Philosophy:** Maximizes collective satisfaction.
@@ -50,7 +50,7 @@ This application allows users to simulate and compare two distinct voting system
 
 ---
 
-## 🛠️ Technical Implementation
+## Technical Implementation
 
 ### Single-File Architecture
 The entire application lives in `bake-off-voting.html`. No build steps, servers, or external libraries are required. Just open the file in a browser.
@@ -67,7 +67,7 @@ The entire application lives in `bake-off-voting.html`. No build steps, servers,
 
 ---
 
-## 🚀 Getting Started
+## Getting Started
 
 1.  Open `bake-off-voting.html` in Chrome, Firefox, or Safari.
 2.  **Tab 1 (Matrix):** Adjust the scores to reflect your best guess of the voters' opinions.
