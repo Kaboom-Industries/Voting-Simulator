@@ -640,21 +640,12 @@
 
     <script>
         // --- DATA DEFINITIONS ---
-        //const FILMS = [
-        //    "AVATAR: FIRE AND ASH", "CAPTAIN AMERICA: BRAVE NEW WORLD", "F1", "FRANKENSTEIN",
-        //    "HOW TO TRAIN YOUR DRAGON", "JURASSIC WORLD REBIRTH", "LILO & STITCH", "MICKEY 17",
-        //    "A MINECRAFT MOVIE", "MISSION: IMPOSSIBLE - THE FINAL RECKONING", "PREDATOR: BADLANDS",
-        //    "SINNERS", "SUPERMAN", "THE ELECTRIC STATE", "THE FANTASTIC FOUR: FIRST STEPS",
-        //    "THE LOST BUS", "THE RUNNING MAN", "THUNDERBOLTS*", "TRON: ARES", "WICKED: FOR GOOD"
-        //];
-
         const FILMS = [
-            "Dune: Part Two", "Alien: Romulus", "Better Man", "Kingdom of the Planet of the Apes",
-            "Wicked", "Godzilla Minus One", "The Creator", "Guardians of the Galaxy Vol. 3",
-            "MI: Dead Reckoning Part One", "Napoleon", "Avatar: The Way of Water",
-            "All Quiet on the Western Front", "The Batman", "Black Panther: Wakanda Forever",
-            "Top Gun: Maverick", "Dune", "Free Guy", "No Time to Die",
-            "Shang-Chi and the Legend of the Ten Rings", "Spider-Man: No Way Home"
+            "AVATAR: FIRE AND ASH", "CAPTAIN AMERICA: BRAVE NEW WORLD", "F1", "FRANKENSTEIN",
+            "HOW TO TRAIN YOUR DRAGON", "JURASSIC WORLD REBIRTH", "LILO & STITCH", "MICKEY 17",
+            "A MINECRAFT MOVIE", "MISSION: IMPOSSIBLE - THE FINAL RECKONING", "PREDATOR: BADLANDS",
+            "SINNERS", "SUPERMAN", "THE ELECTRIC STATE", "THE FANTASTIC FOUR: FIRST STEPS",
+            "THE LOST BUS", "THE RUNNING MAN", "THUNDERBOLTS*", "TRON: ARES", "WICKED: FOR GOOD"
         ];
 
         const GROUPS = [
@@ -662,32 +653,32 @@
             { id: "comp", name: "Compositing", count: 3 },
             { id: "anim", name: "Animation", count: 4 },
             { id: "prac", name: "Practical / Stunt", count: 5 },
-            { id: "pop", name: "10/1 Popular", count: 4 },
+            { id: "sim", name: "Creature / Sim", count: 4 },
             { id: "gen", name: "Generalist", count: 15 }
         ];
 
         const DEFAULT_MATRIX = {
-            //                                               [vfx, comp, anim, prac, pop, gen]
-            "Dune: Part Two": [10, 9, 6, 8, 10, 10],
-            "Alien: Romulus": [8, 9, 7, 9, 1, 7],
-            "Better Man": [9, 8, 10, 4, 1, 8],
-            "Kingdom of the Planet of the Apes": [9, 9, 10, 6, 1, 8],
-            "Wicked": [9, 8, 5, 9, 1, 8],
-            "Godzilla Minus One": [10, 8, 8, 7, 10, 9],
-            "The Creator": [9, 10, 8, 7, 1, 8],
-            "Guardians of the Galaxy Vol. 3": [9, 9, 10, 6, 10, 8],
-            "MI: Dead Reckoning Part One": [7, 8, 2, 10, 1, 8],
-            "Napoleon": [8, 8, 3, 9, 1, 7],
-            "Avatar: The Way of Water": [10, 10, 9, 5, 10, 10],
-            "All Quiet on the Western Front": [6, 8, 2, 10, 1, 8],
-            "The Batman": [7, 9, 3, 9, 10, 9],
-            "Black Panther: Wakanda Forever": [8, 7, 7, 6, 10, 7],
-            "Top Gun: Maverick": [6, 7, 2, 10, 10, 9],
-            "Dune": [10, 10, 5, 7, 10, 10],
-            "Free Guy": [8, 8, 6, 5, 1, 6],
-            "No Time to Die": [6, 8, 2, 10, 10, 8],
-            "Shang-Chi and the Legend of the Ten Rings": [8, 7, 8, 7, 1, 7],
-            "Spider-Man: No Way Home": [9, 8, 9, 6, 10, 9]
+            //                                          [vfx, comp, anim, prac, sim, gen]
+            "AVATAR: FIRE AND ASH": [10, 8, 7, 5, 9, 9],
+            "CAPTAIN AMERICA: BRAVE NEW WORLD": [7, 6, 3, 7, 4, 2],
+            "F1": [6, 9, 2, 10, 5, 8],
+            "FRANKENSTEIN": [6, 7, 5, 6, 10, 6],
+            "HOW TO TRAIN YOUR DRAGON": [5, 4, 10, 3, 6, 5],
+            "JURASSIC WORLD REBIRTH": [7, 6, 6, 5, 9, 8],
+            "LILO & STITCH": [4, 3, 9, 2, 5, 4],
+            "MICKEY 17": [7, 8, 6, 6, 9, 7],
+            "A MINECRAFT MOVIE": [5, 4, 8, 1, 5, 1],
+            "MISSION: IMPOSSIBLE - THE FINAL RECKONING": [7, 8, 3, 10, 4, 4],
+            "PREDATOR: BADLANDS": [5, 6, 2, 9, 5, 5],
+            "SINNERS": [4, 9, 2, 8, 4, 7],
+            "SUPERMAN": [9, 7, 5, 6, 5, 4],
+            "THE ELECTRIC STATE": [9, 6, 7, 4, 9, 9],
+            "THE FANTASTIC FOUR: FIRST STEPS": [9, 6, 5, 5, 5, 5],
+            "THE LOST BUS": [3, 9, 2, 8, 3, 8],
+            "THE RUNNING MAN": [5, 8, 3, 8, 4, 3],
+            "THUNDERBOLTS*": [6, 5, 3, 7, 4, 2],
+            "TRON: ARES": [10, 7, 5, 4, 6, 7],
+            "WICKED: FOR GOOD": [8, 7, 10, 3, 5, 10]
         };
 
         let currentMatrix = JSON.parse(JSON.stringify(DEFAULT_MATRIX));
