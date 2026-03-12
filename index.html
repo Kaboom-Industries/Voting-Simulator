@@ -18,6 +18,79 @@
             /* Blue for Passion */
         }
 
+        /* Modal Overlay */
+        #caveat-modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            z-index: 2000;
+            justify-content: center;
+            align-items: center;
+        }
+
+        #caveat-modal {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            max-width: 600px;
+            width: 90%;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+            text-align: left;
+        }
+
+        #caveat-modal h2 {
+            margin-top: 0;
+            color: var(--danger);
+            border-bottom: 2px solid var(--danger);
+            padding-bottom: 10px;
+        }
+
+        #caveat-modal p, #caveat-modal ul {
+            font-size: 1.05rem;
+            line-height: 1.5;
+            color: #444;
+        }
+
+        #caveat-modal ul {
+            padding-left: 20px;
+        }
+
+        #caveat-modal li {
+            margin-bottom: 10px;
+        }
+
+        #caveat-modal-btn {
+            display: block;
+            width: 100%;
+            background: var(--accent);
+            color: white;
+            border: none;
+            padding: 12px;
+            font-size: 1.1rem;
+            font-weight: bold;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-top: 20px;
+            transition: background 0.2s;
+        }
+
+        #caveat-modal-btn:hover {
+            background: #34495e;
+        }
+
+        #caveat-modal a {
+            color: var(--stv-color);
+            text-decoration: none;
+        }
+
+        #caveat-modal a:hover {
+            text-decoration: underline;
+        }
+
         body {
             font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
             background-color: var(--light);
@@ -638,7 +711,31 @@
 
     </div>
 
+    <div id="caveat-modal-overlay">
+        <div id="caveat-modal">
+            <h2>⚠️ IMPORTANT CAVEATS</h2>
+            <ul>
+                <li>This unofficial test "voting lab" is designed to be easy to read and use, and does not fully implement the voting procedures of the Academy. Results do not match official Academy procedures, but it generally illustrates the common differences between the voting systems.</li>
+                <li>All data is fabricated. I (and others) don't know actual votes or even voting patterns. The voting groups are editible to allow for experimentation.</li>
+            </ul>
+            <p>For more information, visit the <a href="https://github.com/Kaboom-Industries/Voting-Simulator?tab=readme-ov-file" target="_blank">GitHub Repository</a>.</p>
+            <button id="caveat-modal-btn" onclick="acknowledgeCaveats()">Acknowledge</button>
+        </div>
+    </div>
+
     <script>
+        // --- CAVEAT MODAL ---
+        function checkCaveats() {
+            if (!localStorage.getItem('caveatsAcknowledged')) {
+                document.getElementById('caveat-modal-overlay').style.display = 'flex';
+            }
+        }
+
+        function acknowledgeCaveats() {
+            localStorage.setItem('caveatsAcknowledged', 'true');
+            document.getElementById('caveat-modal-overlay').style.display = 'none';
+        }
+
         // --- DATA DEFINITIONS ---
         const FILMS = [
             "ALADDIN", "AVATAR: FIRE AND ASH", "BLADE RUNNER 2049", "CAPTAIN AMERICA: CIVIL WAR",
@@ -1803,6 +1900,7 @@
         window.onload = function () {
             runUnitTests();
             init();
+            checkCaveats();
         };
 
     </script>
