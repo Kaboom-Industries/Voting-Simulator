@@ -1,5 +1,11 @@
 # Academy Voting Lab
 
+**[Experiment with the Deployed Version Online](https://kaboom-industries.github.io/Voting-Simulator/)**
+
+> **⚠️ IMPORTANT CAVEATS**
+> - This unofficial test "voting lab" is designed to be easy to read and use, and does not fully implement the voting procedures of the Academy. Results do not match official Academy procedures, but it generally illustrates the common differences between the voting systems.
+> - All data is fabricated. I (and others) don't know actual votes or even voting patterns. The voting groups are editible to allow for experimentation.
+
 **A Single-File HTML/JS Simulation Tool for Comparative Voting Analysis**
 
 This application allows users to simulate and compare two distinct voting systems—**Range Reweighted Voting (RRV)** and **Preferential Single Transferable Vote (STV)**—side-by-side. It is designed to model "Academy-style" elections, specifically narrowing a field of 20 films down to 10 nominees using a committee of ~35 voters divided into specific archetypes.
